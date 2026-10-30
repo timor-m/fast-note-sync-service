@@ -137,7 +137,7 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Publish the combined version manifest
+      - name: Publish version and latest manifests
         env:
           VERSION: ${{ needs.docker.outputs.version }}
         shell: bash
@@ -148,7 +148,7 @@ jobs:
             references+=("$IMAGE@sha256:$(basename "$digest")")
           done
           test "${#references[@]}" -eq 2
-          docker buildx imagetools create --tag "$IMAGE:$VERSION" "${references[@]}"
+          docker buildx imagetools create --tag "$IMAGE:$VERSION" --tag "$IMAGE:latest" "${references[@]}"
           docker buildx imagetools inspect "$IMAGE:$VERSION" | tee "$RUNNER_TEMP/manifest.txt"
           grep -q 'linux/amd64' "$RUNNER_TEMP/manifest.txt"
           grep -q 'linux/arm64' "$RUNNER_TEMP/manifest.txt"
@@ -157,7 +157,7 @@ jobs:
             echo "- Image: $IMAGE:$VERSION"
             echo "- Source: $GITHUB_SHA"
             echo '- Platforms: linux/amd64, linux/arm64 (parallel build and integration checks)'
-            echo '- latest was not published by this workflow.'
+            echo "- Alias: $IMAGE:latest"
             echo '```'
             cat "$RUNNER_TEMP/manifest.txt"
             echo '```'

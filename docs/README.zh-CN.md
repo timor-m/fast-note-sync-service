@@ -66,7 +66,7 @@ GitHub Actions 只保留这条流水线，不再运行 Go 二进制发布、fnOS
 
 - 仓库 Secrets：`DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`。
 - 可选仓库 Variable：`DOCKERHUB_IMAGE`，默认 `timorm/fast-note-sync-service`。
-- 标签取自 `internal/app/version.go`，当前为 `1.0.0`；只推送版本标签，不更新 `latest`。同版本重新构建会更新该标签，可使用工作流摘要中的 digest 固定某次构建。
+- 标签取自 `internal/app/version.go`，当前为 `1.0.0`；同时推送版本标签和 `latest`，指向同一个双架构镜像。同版本重新构建会更新该标签，可使用工作流摘要中的 digest 固定某次构建。
 
 **本次单容器实现的首次镜像发布尚未完成。** 在[本仓库 Actions](https://github.com/timor-m/fast-note-sync-service/actions) 确认对应版本发布成功前，请使用上面的源码构建方式。镜像发布后，在仓库根目录执行：
 

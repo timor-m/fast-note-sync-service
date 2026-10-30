@@ -12,11 +12,14 @@ COPY docs ./docs
 COPY frontend ./frontend
 ARG TARGETOS
 ARG TARGETARCH
+# Persist compiled objects in a normal layer so gha can restore them on a new
+# runner. Cache mounts alone are not exported; changing metadata would rebuild
+# every package. The later build only relinks these objects with version flags.
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -o /out/fast-note-sync-service .
 ARG VERSION
 ARG BUILD_DATE
 ARG GIT_COMMIT
-RUN --mount=type=cache,target=/root/.cache/go-build \
-    flags="-s -w -X github.com/haierkeys/fast-note-sync-service/internal/app.GitTag=${GIT_COMMIT:-local} -X github.com/haierkeys/fast-note-sync-service/internal/app.BuildTime=${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" && \
+RUN flags="-s -w -X github.com/haierkeys/fast-note-sync-service/internal/app.GitTag=${GIT_COMMIT:-local} -X github.com/haierkeys/fast-note-sync-service/internal/app.BuildTime=${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" && \
     if [ -n "$VERSION" ]; then flags="$flags -X github.com/haierkeys/fast-note-sync-service/internal/app.Version=$VERSION"; fi && \
     CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags "$flags" -o /out/fast-note-sync-service .
 

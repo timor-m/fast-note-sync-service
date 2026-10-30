@@ -40,3 +40,13 @@ func TestVersionHandler_ServerVersion_Success(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, app.Version, resp.Data.Version)
 }
+
+func TestUpgradeCannotReplaceDockerForkWithUpstreamBinary(t *testing.T) {
+	a := app.NewTestApp(nil)
+	handler := NewAdminControlHandler(a, nil)
+	c, w := newVersionTestContext("/api/admin/upgrade?version=3.6.1")
+	handler.Upgrade(c)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assertResponseCode(t, w, code.Failed.Code())
+	assert.Contains(t, w.Body.String(), "Docker")
+}

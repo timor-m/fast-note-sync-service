@@ -56,7 +56,7 @@ func frontendProxy(cfg config.FrontendConfig, trustedProxies ...string) gin.Hand
 			if cfg.Fallback != nil && *cfg.Fallback && !strings.HasPrefix(r.URL.Path, "/api/frontend/") && !strings.HasPrefix(r.URL.Path, "/_nuxt/") {
 				w.Header().Set("Content-Type", "text/html; charset=utf-8")
 				w.WriteHeader(http.StatusServiceUnavailable)
-				_, _ = w.Write([]byte(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>前台暂不可用</title><h1>前台暂时无法连接</h1><p>同步服务仍可使用，请稍后重试。</p><a href="/webgui/">进入原版管理后台</a></html>`))
+				_, _ = w.Write([]byte(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>前台暂不可用</title><h1>前台暂时无法连接</h1><p>同步服务仍可使用，请稍后重试。</p></html>`))
 				return
 			}
 			status := http.StatusBadGateway

@@ -59,11 +59,14 @@ export async function fnsRequest<T>(
   // Go reports business errors as HTTP 200 JSON envelopes. JSON attachments
   // are valid files too, so identify an error envelope instead of rejecting all JSON.
   const envelope =
-    typeof result?.code === 'number' && typeof result?.status === 'boolean'
+    typeof result?.code === 'number' &&
+    (typeof result?.status === 'boolean' ||
+      (result.status === undefined && result.code >= 100 &&
+        typeof result.message === 'string'))
   if (
     options.binary &&
     response.ok &&
-    (!mayBeEnvelope || !envelope || result?.status !== false)
+    (!mayBeEnvelope || !envelope || result?.status === true)
   ) {
     return {
       data: response._data,

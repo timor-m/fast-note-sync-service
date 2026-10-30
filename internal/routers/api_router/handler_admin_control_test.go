@@ -134,16 +134,16 @@ func TestAdminControlHandler_GC_Success(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "Manual GC completed")
 }
 
-func TestAdminControlHandler_Upgrade_InvalidVersion(t *testing.T) {
+func TestAdminControlHandler_Upgrade_RequiresDocker(t *testing.T) {
 	handler, _, _ := newTestAdminHandler()
-	// Test with invalid version format
+	// No version input can re-enable binary replacement in the Docker fork.
 	c, w := newAdminTestContext("GET", "/api/admin/upgrade?version=../../invalid", "", 1)
 
 	handler.Upgrade(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assertResponseCode(t, w, code.ErrorInvalidParams.Code())
-	assert.Contains(t, w.Body.String(), "invalid version format")
+	assertResponseCode(t, w, code.Failed.Code())
+	assert.Contains(t, w.Body.String(), "Docker")
 }
 
 func TestAdminControlHandler_GetConfig_WithSecurityFields(t *testing.T) {

@@ -13,7 +13,7 @@
 - **原管理后台**：`/webgui/` 保留 React 后台，继续负责注册、插件配置和管理操作；原 `/share/:side/:token` 分享链接继续可用。
 - **接口集成**：REST API、MCP StreamableHTTP/SSE，以及原有 SQLite、MySQL、PostgreSQL 支持继续由 Go 提供。
 
-`/kb/demo` 目前是明确标识的演示知识库。新 `/s/:token?id=:resourceId` 分享页目前提供只读文本预览；完整 Markdown 渲染、双链、在线编辑和知识库发布管理仍待后续实现。OIDC 登录继续在原 WebGUI 中使用，新登录页目前采用账号密码登录。
+前台首页仅保留工作区入口，已移除管理后台导航与演示知识库；原后台仍可通过 `/webgui/` 直接访问。新 `/s/:token?id=:resourceId` 分享页目前提供只读文本预览；完整 Markdown 渲染、双链、在线编辑和知识库发布管理仍待后续实现。OIDC 登录继续在原 WebGUI 中使用，新登录页目前采用账号密码登录。
 
 分享浏览统计复用原后台：每次成功读取笔记累计一次 PV，元信息预览、失败访问及附件请求不计数，约 5 分钟聚合落库。页面提供独立 TDK 和社交分享元信息，无密码分享在服务端输出标题与摘要，密码分享使用通用预览信息；所有分享链接默认禁止搜索收录。统计口径、限制和站点域名配置见[浏览统计与 TDK](../docker/NUXT.md#分享浏览统计与-tdk)。
 
@@ -37,7 +37,6 @@ FNS_SESSION_SECURE=false docker compose -f docker/docker-compose.yaml up -d --bu
 | `/` | Nuxt 门户首页 |
 | `/login`、`/app` | 新登录页和个人工作台 |
 | `/webgui/` | 原 React 管理后台与注册入口 |
-| `/kb/demo` | 演示知识库 |
 | `/s/:token?id=:resourceId` | 新分享文本预览 |
 | `/share/:side/:token` | 原分享页面 |
 | `/api/*` | 原业务、同步与 MCP 接口 |
@@ -66,12 +65,12 @@ GitHub Actions 只保留这条流水线，不再运行 Go 二进制发布、fnOS
 
 - 仓库 Secrets：`DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`。
 - 可选仓库 Variable：`DOCKERHUB_IMAGE`，默认 `timorm/fast-note-sync-service`。
-- 标签取自 `internal/app/version.go`，当前为 `1.0.0`；同时推送版本标签和 `latest`，指向同一个双架构镜像。同版本重新构建会更新该标签，可使用工作流摘要中的 digest 固定某次构建。
+- 标签取自 `internal/app/version.go`，当前为 `1.0.1`；同时推送版本标签和 `latest`，指向同一个双架构镜像。同版本重新构建会更新该标签，可使用工作流摘要中的 digest 固定某次构建。
 
 **本次单容器实现的首次镜像发布尚未完成。** 在[本仓库 Actions](https://github.com/timor-m/fast-note-sync-service/actions) 确认对应版本发布成功前，请使用上面的源码构建方式。镜像发布后，在仓库根目录执行：
 
 ```sh
-export FNS_IMAGE=docker.io/timorm/fast-note-sync-service:1.0.0
+export FNS_IMAGE=docker.io/timorm/fast-note-sync-service:1.0.1
 docker compose -f docker/docker-compose.yaml pull
 docker compose -f docker/docker-compose.yaml up -d --no-build
 ```

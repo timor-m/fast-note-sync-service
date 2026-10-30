@@ -9,9 +9,7 @@ const colorMode = useColorMode()
         ><span>Fast Note <strong>Sync</strong></span></NuxtLink
       >
       <nav aria-label="主导航">
-        <NuxtLink to="/kb/demo">公开知识库</NuxtLink
-        ><a href="/webgui/">管理后台 ↗</a
-        ><UButton
+        <UButton
           color="neutral"
           variant="ghost"
           aria-label="切换明暗主题"

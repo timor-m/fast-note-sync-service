@@ -110,15 +110,17 @@ try {
   assert.equal(Array.isArray(running) ? running.length : 1, 1)
   pass('one Compose service and one running container')
   await ready()
-  assert.equal((await api('/api/version')).version, '1.0.0')
+  assert.equal((await api('/api/version')).version, '1.0.1')
   assert.equal((await readFile(join(dir, 'config/lastVersion'), 'utf8')).trim(), '3.6.1')
-  pass('fork version is 1.0.0 while database migration compatibility remains 3.6.1')
+  pass('fork version is 1.0.1 while database migration compatibility remains 3.6.1')
   for (let i = 0; i < 100; i++) {
     if ((await fetch(base + '/api/frontend/health')).ok) break
     await new Promise((resolve) => setTimeout(resolve, 200))
   }
   assert.match(await (await fetch(base)).text(), /每一次记录/)
-  pass('Go public entry serves Nuxt SSR')
+  assert.match(await (await fetch(base)).text(), /\/_nuxt\/favicon.svg/)
+  assert.equal((await fetch(base + '/_nuxt/favicon.svg')).status, 200)
+  pass('Go public entry serves Nuxt SSR and favicon')
   const legacy = await fetch(base + '/webgui/')
   assert.equal(legacy.status, 200)
   const legacyHtml = await legacy.text()
@@ -129,7 +131,12 @@ try {
     for (const encoding of ['identity', 'gzip', 'br']) {
       const response = await fetch(base + module, { headers: { 'accept-encoding': encoding } })
       assert.equal(response.status, 200)
-      assert.doesNotMatch(await response.text(), /ui\.support\.|\/api\/support|ko-fi\.com|fns-support/)
+      const source = await response.text()
+      assert.doesNotMatch(source, /ui\.support\.|\/api\/support|ko-fi\.com|fns-support/)
+      if (module.includes('system-settings-')) {
+        assert.match(source, /github\.com\/timor-m\/fast-note-sync-service\/issues\/new/)
+        assert.doesNotMatch(source, /t\.me\/obsidian_users|\/api\/admin\/upgrade/)
+      }
     }
   }
   for (const path of ['/api/support', '/static/images/kofi.png', '/static/images/wxds.png']) {
@@ -145,6 +152,7 @@ try {
   const home = await (await fetch(base)).text()
   const asset = home.match(/(?:src|href)="(\/_nuxt\/[^\"]+\.(?:js|css))"/)
   assert.ok(asset)
+  assert.doesNotMatch(home, /href="\/webgui\/"|href="\/kb\/demo"|演示知识库/)
   assert.equal((await fetch(base + asset[1])).status, 200)
   pass('legacy React, legacy share and Nuxt assets coexist')
   const credentials = 'smokeuser',
@@ -211,6 +219,9 @@ try {
   })
   assert.deepEqual(Buffer.from(await file.arrayBuffer()), png)
   pass('original attachment upload/download APIs')
+  const invalidLogin = await post('/api/frontend/auth/login', { credentials, password: 'wrong-password' })
+  assert.equal(invalidLogin.status, 400)
+  assert.match(await invalidLogin.text(), /登录失败/)
   const login = await post('/api/frontend/auth/login', {
     credentials,
     password,

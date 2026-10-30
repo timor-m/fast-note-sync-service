@@ -26,7 +26,7 @@ export interface Page<T> {
 }
 export interface FnsResponse<T> {
   code: number
-  status: boolean
+  status?: boolean
   message?: string
   data: T
 }

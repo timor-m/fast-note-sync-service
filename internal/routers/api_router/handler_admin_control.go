@@ -1,18 +1,11 @@
 package api_router
 
 import (
-	"archive/tar"
-	"compress/gzip"
-	"context"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
-	"path/filepath"
 	"runtime"
 	"runtime/debug"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -29,7 +22,6 @@ import (
 	"github.com/shirou/gopsutil/v4/mem"
 	"github.com/shirou/gopsutil/v4/process"
 	"go.uber.org/zap"
-	"golang.org/x/mod/semver"
 )
 
 // AdminControlHandler Admin control configuration API router handler
@@ -1113,9 +1105,9 @@ func (h *AdminControlHandler) GetSystemInfo(c *gin.Context) {
 	response.ToResponse(code.Success.WithData(data))
 }
 
-// Upgrade triggers server automatic upgrade
+// Upgrade rejects binary replacement; this fork upgrades through Docker images.
 // @Summary Trigger server upgrade
-// @Description Download latest version and restart server
+// @Description Docker-only fork: update the image and recreate the container
 // @Tags System
 // @Produce json
 // @Security UserAuthToken
@@ -1132,105 +1124,7 @@ func (h *AdminControlHandler) Upgrade(c *gin.Context) {
 		return
 	}
 
-	var upgradeReq dto.UpgradeRequest
-	if ok, validErrs := pkgapp.BindAndValid(c, &upgradeReq); !ok {
-		response.ToResponse(code.ErrorInvalidParams.WithDetails(validErrs.Errors()...))
-		return
-	}
-
-	// Filter and validate Version parameter
-	// 过滤并验证 Version 参数
-	if upgradeReq.Version != "latest" {
-		v := upgradeReq.Version
-		if !strings.HasPrefix(v, "v") {
-			v = "v" + v
-		}
-		if !semver.IsValid(v) {
-			h.App.Logger().Warn("apiRouter.AdminControl.Upgrade invalid version format", zap.String("version", upgradeReq.Version))
-			response.ToResponse(code.ErrorInvalidParams.WithDetails("invalid version format"))
-			return
-		}
-	}
-
-	checkInfo := h.App.CheckVersion("")
-	version := ""
-
-	if upgradeReq.Version == "latest" {
-		if !checkInfo.VersionIsNew {
-			response.ToResponse(code.Success.WithDetails("Current version is already up to date"))
-			return
-		}
-		version = checkInfo.VersionNewName
-	} else {
-		version = upgradeReq.Version
-	}
-
-	versionRaw := strings.TrimPrefix(version, "v")
-
-	// Determine download URL
-	// At upgrade time, probe both sources in auto mode to pick the best one
-	// rather than relying on the cached background-task result.
-	// 确定下载地址：auto 模式在升级时主动探测两源，不依赖后台任务缓存。
-	useGitHub := checkInfo.GithubAvailable
-	if cfg.App.PullSource == "auto" {
-		snap := h.App.SourceSelector().Probe(c.Request.Context())
-		useGitHub = snap.UseGitHub
-	}
-
-	goos := runtime.GOOS
-	goarch := runtime.GOARCH
-
-	// Example: fast-note-sync-service-2.0.10-linux-amd64.tar.gz
-	fileName := fmt.Sprintf("fast-note-sync-service-%s-%s-%s.tar.gz", versionRaw, goos, goarch)
-	downloadURL := ""
-	if useGitHub {
-		// GitHub releases/download/[tag]/[filename]
-		// Based on user feedback: URL should NOT have 'v' in the tag part if the tag itself doesn't have it
-		downloadURL = fmt.Sprintf("https://github.com/haierkeys/fast-note-sync-service/releases/download/%s/%s", versionRaw, fileName)
-	} else {
-		// CNB download URL format
-		downloadURL = fmt.Sprintf("https://cnb.cool/haierkeys/fast-note-sync-service/-/releases/download/%s/%s", versionRaw, fileName)
-	}
-
-	h.App.Logger().Info("Starting upgrade download", zap.String("url", downloadURL), zap.String("version", versionRaw))
-
-	// Prepare temp directory
-	// 使用配置中的 TempPath 作为临时目录
-	tempDir := filepath.Join(cfg.App.TempPath, "upgrade")
-	_ = os.RemoveAll(tempDir)
-	if err := os.MkdirAll(tempDir, 0755); err != nil {
-		response.ToResponse(code.Failed.WithDetails("Failed to create temp directory: " + err.Error()))
-		return
-	}
-
-	// Download
-	tarPath := filepath.Join(tempDir, fileName)
-	if err := h.downloadFile(c.Request.Context(), downloadURL, tarPath); err != nil {
-		h.App.Logger().Error("Upgrade download failed",
-			zap.String("url", downloadURL),
-			zap.Error(err),
-		)
-		response.ToResponse(code.Failed.WithDetails("Download failed: " + err.Error()))
-		return
-	}
-
-	// Extract
-	binaryName := "fast-note-sync-service"
-	if goos == "windows" {
-		binaryName += ".exe"
-	}
-	extractedBinaryPath := filepath.Join(tempDir, binaryName)
-
-	if err := h.extractBinary(tarPath, tempDir, binaryName); err != nil {
-		h.App.Logger().Error("Upgrade extract failed", zap.Error(err))
-		response.ToResponse(code.Failed.WithDetails("Extract failed: " + err.Error()))
-		return
-	}
-
-	// Trigger upgrade in App
-	h.App.TriggerUpgrade(extractedBinaryPath)
-
-	response.ToResponse(code.Success.WithDetails("Upgrade triggered, server is restarting..."))
+	response.ToResponse(code.Failed.WithDetails("本分支通过 Docker 镜像升级，请拉取 timorm/fast-note-sync-service 后重新创建容器；不支持后台替换 Go 二进制。"))
 }
 
 // Restart triggers server automatic restart
@@ -1383,90 +1277,6 @@ func (h *AdminControlHandler) KickWSClient(c *gin.Context) {
 	}
 
 	response.ToResponse(code.Success.WithDetails("Client kicked successfully"))
-}
-
-func (h *AdminControlHandler) downloadFile(ctx context.Context, url string, dest string) error {
-	client := &http.Client{
-		Timeout: 3 * time.Minute,
-		Transport: &http.Transport{
-			TLSHandshakeTimeout:   30 * time.Second,
-			ResponseHeaderTimeout: 60 * time.Second,
-			IdleConnTimeout:       90 * time.Second,
-		},
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return fmt.Errorf("create request failed: %w", err)
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("download request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("bad status: %s", resp.Status)
-	}
-
-	out, err := os.Create(dest)
-	if err != nil {
-		return fmt.Errorf("create file failed: %w", err)
-	}
-	defer out.Close()
-
-	_, err = io.Copy(out, resp.Body)
-	if err != nil {
-		return fmt.Errorf("save file failed: %w", err)
-	}
-
-	return nil
-}
-
-func (h *AdminControlHandler) extractBinary(tarPath string, destDir string, binaryName string) error {
-	f, err := os.Open(tarPath)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	gzr, err := gzip.NewReader(f)
-	if err != nil {
-		return err
-	}
-	defer gzr.Close()
-
-	tr := tar.NewReader(gzr)
-
-	for {
-		header, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
-
-		// Check if it's the binary we're looking for
-		// Often files in tar.gz are in a subdirectory or have different names
-		// In alpha-release.yml: tar -czvf ... . (contents of build/platform dir)
-		if filepath.Base(header.Name) == binaryName {
-			target := filepath.Join(destDir, binaryName)
-			f, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR, os.FileMode(header.Mode))
-			if err != nil {
-				return err
-			}
-			if _, err := io.Copy(f, tr); err != nil {
-				f.Close()
-				return err
-			}
-			f.Close()
-			return nil
-		}
-	}
-
-	return fmt.Errorf("binary %s not found in archive", binaryName)
 }
 
 // CloudflaredTunnelDownload triggers cloudflared binary download (requires admin privileges)

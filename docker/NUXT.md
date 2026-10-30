@@ -52,12 +52,12 @@ Secrets 必须对当前仓库可用，其他仓库的 Secrets 不会自动继承
 
 移除独立校验任务、Go 测试程序编译、Nuxt 类型检查与单元测试，以及宿主机重复的 npm 安装和 Nuxt 构建；每个架构仍执行完整的容器集成和故障恢复检查。两种架构分别保存 Actions 缓存；Go 只复制相关源码，并在写入提交号和时间之前编译，编译缓存通过普通镜像层导出到 Actions；前台改动仅需复用对象文件重新链接 Go，不会从头编译依赖；版本标签写在系统依赖安装之后，提交号和构建时间变化不会触发重新安装系统依赖。每个 runner 仅编译一次，检查通过后再次调用 Buildx 复用本地缓存层、按 digest 上传镜像，不再编译，也不重复上传构建缓存；两边全部成功后才合并发布版本标签。只上传 digest 文件用于合并，不生成 Go 二进制发布包、GitHub Release、SBOM 或 provenance 附件。当前不构建 ARMv7。
 
-标签读取 `internal/app/version.go` 的 Go 应用版本（当前为 `1.0.0`），不取前台脚手架版本；同时发布版本标签和 `latest`，两个标签指向同一个双架构镜像；不创建分支别名或 Git tag/Release。相同版本再次推送 master 会更新该版本镜像；需要固定某次构建时使用 Actions 摘要中的 digest。新的 master 推送会取消尚未完成的旧流水线；单次流水线内两种架构并行。
+标签读取 `internal/app/version.go` 的 Go 应用版本（当前为 `1.0.1`），不取前台脚手架版本；同时发布版本标签和 `latest`，两个标签指向同一个双架构镜像；不创建分支别名或 Git tag/Release。相同版本再次推送 master 会更新该版本镜像；需要固定某次构建时使用 Actions 摘要中的 digest。新的 master 推送会取消尚未完成的旧流水线；单次流水线内两种架构并行。
 
 确认对应版本已在 Actions 成功发布后，服务器可执行：
 
 ```sh
-export FNS_IMAGE=docker.io/timorm/fast-note-sync-service:1.0.0
+export FNS_IMAGE=docker.io/timorm/fast-note-sync-service:1.0.1
 docker compose -f docker/docker-compose.yaml pull
 docker compose -f docker/docker-compose.yaml up -d --no-build
 ```
@@ -83,7 +83,7 @@ docker compose -f docker/docker-compose.yaml up -d --no-build
 
 沿用约 5 分钟的内存聚合落库机制，正常关闭时也会写入；定时写入失败会保留增量等待重试。异常强制终止仍可能丢失尚未落库的数据，不把它当作精确审计计数。
 
-首页和各前台页面输出独立标题、描述、关键词及 Open Graph/Twitter 元信息。无密码分享通过 `/api/share/meta` 获取已授权笔记的标题和摘要，在 SSR HTML 中输出，元信息请求不增加 PV。Nuxt 元信息接口不接受 URL 中的密码；密码分享未解锁时使用通用标题和描述，不在 SSR 元信息中泄露笔记正文。普通分享与密码分享始终设置 `noindex, nofollow`，同时禁用缓存；当前演示知识库、登录页及个人工作台也禁止收录。未来公开知识库的收录策略需要随发布功能单独实现。
+首页和各前台页面输出独立标题、描述、关键词及 Open Graph/Twitter 元信息。无密码分享通过 `/api/share/meta` 获取已授权笔记的标题和摘要，在 SSR HTML 中输出，元信息请求不增加 PV。Nuxt 元信息接口不接受 URL 中的密码；密码分享未解锁时使用通用标题和描述，不在 SSR 元信息中泄露笔记正文。普通分享与密码分享始终设置 `noindex, nofollow`，同时禁用缓存；登录页及个人工作台也禁止收录。未来公开知识库的收录策略需要随发布功能单独实现。
 
 在 Docker 环境文件中设置 `FNS_SITE_URL=https://notes.example.com`，用于首页 canonical；本地 Nuxt 使用 `NUXT_PUBLIC_SITE_URL`。未配置时不生成 canonical，不从请求 Host 推断站点域名。分享链接不生成携带 Token 的 canonical。
 
@@ -104,6 +104,8 @@ Go 现有 YAML `web.frontend` 配置继续保留，原生 Go 运行时仍默认�
 直接 HTTP 测试应设 FNS_SESSION_SECURE=false；HTTPS 生产使用 true。Nuxt 与原 React 后台登录会话独立。自然过期的闲置会话文件暂不自动清理，可按记录 expiresAt 清理；过期会话已被拒绝。
 
 如果之前已实际部署双容器，保留原笔记 config/storage 即可迁移；原 Nuxt 会话若不迁移只会要求重新登录，不影响笔记数据。要保留其登录状态，需要沿用原会话密钥并把原 Nuxt 会话卷中的记录放到新的 storage/web-sessions/，保证 node 用户可读写。
+
+服务端更新检查仅查询 `timorm/fast-note-sync-service` 的 Docker Hub 版本标签，不再比较上游 Go Release。后台原二进制升级操作改为打开本项目部署说明，后端也拒绝替换二进制；Obsidian 插件继续按其独立上游版本检查。
 
 ## 日志、升级、回滚
 
@@ -131,4 +133,4 @@ docker compose --env-file docker/.env -f docker/docker-compose.yaml up -d --no-b
 
 覆盖真实 Go API、SSR、Cookie、分享与附件、MCP、WebSocket，以及两个进程的启停、Node 故障恢复、Go 故障触发容器重启、关闭前台不启动 Node。详细结果见 `web/docs/single-container-verification.md`。
 
-真实 Obsidian 多设备同步仍需实际插件和设备进行人工回归。公开知识库仍为明确标识的 demo，新分享页仍为安全转义的文本预览，首阶段业务范围没有扩大。
+真实 Obsidian 多设备同步仍需实际插件和设备进行人工回归。公开知识库发布功能尚未提供，新分享页仍为安全转义的文本预览，首阶段业务范围没有扩大。

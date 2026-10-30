@@ -52,8 +52,5 @@ usePageSeo({ title: '登录 · Fast Note Sync', description: '登录 Fast Note S
         >登录工作区 →</UButton
       >
     </form>
-    <p class="subtle">
-      需要注册或管理服务？<a href="/webgui/">进入原版后台 ↗</a>
-    </p>
   </section>
 </template>

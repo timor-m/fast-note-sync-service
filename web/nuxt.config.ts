@@ -8,6 +8,11 @@ export default defineNuxtConfig({
     head: {
       htmlAttrs: { lang: 'zh-CN' },
       title: 'Fast Note Sync',
+      link: [
+        { rel: 'icon', type: 'image/x-icon', sizes: '16x16 32x32 48x48 64x64', href: '/_nuxt/favicon.ico' },
+        { rel: 'icon', type: 'image/svg+xml', sizes: 'any', href: '/_nuxt/favicon.svg' },
+        { rel: 'apple-touch-icon', sizes: '180x180', href: '/_nuxt/apple-touch-icon.png' },
+      ],
       meta: [
         { name: 'description', content: '让笔记连接知识，让知识自由分享。' },
       ],

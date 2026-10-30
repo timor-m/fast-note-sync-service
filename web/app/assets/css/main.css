@@ -348,14 +348,6 @@ h2 {
 .compact {
   padding: 0 0 15px;
 }
-.demo-notice {
-  margin-top: 30px;
-  padding: 18px;
-  background: var(--soft);
-  border-radius: 8px;
-  font-size: 13px;
-  color: var(--muted);
-}
 .shared-note {
   margin: 50px auto;
   max-width: 840px;

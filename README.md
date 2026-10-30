@@ -18,7 +18,7 @@
 | 镜像构建 | GitHub Actions 只保留 Docker Hub 流程，并行构建和校验 amd64 / arm64，合并推送版本镜像；同步更新 `latest`；不打包 Go 二进制或 fnOS |
 | 界面精简 | 移除上游打赏入口、名单与后台更新任务，保留上游署名和许可证 |
 
-原 React 后台、REST API、WebSocket、MCP 和数据存储继续沿用。当前 `/kb/demo` 为演示知识库，新分享页仅提供只读文本预览；完整 Markdown 渲染、在线编辑与知识库发布管理尚未实现。
+原 React 后台、REST API、WebSocket、MCP 和数据存储继续沿用。首页仅保留工作区入口，已移除管理后台导航和演示知识库；新分享页仅提供只读文本预览；完整 Markdown 渲染、在线编辑与知识库发布管理尚未实现。
 
 ## 快速部署
 

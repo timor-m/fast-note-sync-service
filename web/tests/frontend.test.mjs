@@ -23,7 +23,10 @@ test('production frontend and Go API contract', async (t) => {
     const fail = (code) => res.end(JSON.stringify({ code, status: false }))
     if (path.pathname === '/api/user/login') {
       const data = JSON.parse(body)
-      if (data.password === 'incorrect') return fail(402)
+      if (data.password === 'incorrect')
+        return res.end(JSON.stringify({ code: 402, message: 'Invalid username or password', timestamp: new Date().toISOString() }))
+      if (data.password === 'legacy-error') return fail(402)
+      if (data.password === 'invalid-response') return res.end(JSON.stringify({ message: 'unexpected' }))
       assert.equal(req.headers['x-client'], 'webgui')
       assert.deepEqual(Object.keys(data).sort(), ['credentials', 'password'])
       return reply({
@@ -137,17 +140,22 @@ test('production frontend and Go API contract', async (t) => {
       body: JSON.stringify(body),
     })
   await t.test(
-    'SSR pages, Nuxt assets, demo marker and unknown knowledge base',
+    'SSR pages and assets omit admin and demo entrypoints',
     async () => {
       const home = await fetch(base)
       const html = await home.text()
       assert.equal(home.status, 200)
       assert.match(html, /每一次记录/)
+      assert.match(html, /rel="icon"[^>]+href="\/_nuxt\/favicon.svg"/)
+      const icon = await fetch(base + '/_nuxt/favicon.svg')
+      assert.equal(icon.status, 200)
+      assert.match(icon.headers.get('content-type'), /image\/svg\+xml/)
+      assert.doesNotMatch(html, /演示知识库|公开知识库|管理后台|href="\/kb\/demo"|href="\/webgui\//)
       const asset = html.match(/(?:src|href)="(\/_nuxt\/[^\"]+\.(?:js|css))"/)
       assert.ok(asset)
       assert.equal((await fetch(base + asset[1])).status, 200)
       assert.match(await (await fetch(base + '/login')).text(), /用户名或邮箱/)
-      assert.match(await (await fetch(base + '/kb/demo')).text(), /演示数据/)
+      assert.equal((await fetch(base + '/kb/demo')).status, 404)
       assert.equal((await fetch(base + '/kb/missing')).status, 404)
       assert.match(
         await (await fetch(base + '/s/share-token?id=42')).text(),
@@ -182,7 +190,7 @@ test('production frontend and Go API contract', async (t) => {
     const previewWithPassword = await fetch(base + '/api/frontend/shares/meta?token=share-token&id=42&password=test-password')
     assert.equal(previewWithPassword.status, 400)
     assert.ok(requests.filter((r) => r.path.startsWith('/api/share/meta')).every((r) => !r.path.includes('password=')))
-    for (const path of ['/login', '/kb/demo']) {
+    for (const path of ['/login']) {
       const response = await fetch(base + path)
       assert.equal(response.headers.get('x-robots-tag'), 'noindex, nofollow')
     }
@@ -202,6 +210,8 @@ test('production frontend and Go API contract', async (t) => {
     })
     assert.equal(res.status, 400)
     assert.match(await res.text(), /登录失败/)
+    assert.equal((await post('/api/frontend/auth/login', { credentials: 'test', password: 'legacy-error' })).status, 400)
+    assert.equal((await post('/api/frontend/auth/login', { credentials: 'test', password: 'invalid-response' })).status, 502)
   })
   await t.test(
     'login keeps Go token server side and sets HttpOnly session',

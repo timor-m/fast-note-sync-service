@@ -19,8 +19,6 @@ usePageSeo({
       <div class="actions">
         <UButton to="/login" size="xl"
           >进入我的工作区 <span aria-hidden="true">→</span></UButton
-        ><UButton to="/kb/demo" size="xl" color="neutral" variant="outline"
-          >探索公开知识库</UButton
         >
       </div>
       <p class="subtle">你的笔记，你的服务器，你的知识。</p>
@@ -60,15 +58,5 @@ usePageSeo({
       <h3>让想法走得更远</h3>
       <p>用受控的分享链接打开一篇笔记，让知识在交流中生长。</p>
     </article>
-  </section>
-  <section class="section-intro">
-    <div>
-      <div class="eyebrow">OPEN KNOWLEDGE</div>
-      <h2>从一座知识花园开始探索。</h2>
-      <p class="muted">先看看公开知识库的呈现方式。</p>
-    </div>
-    <UButton to="/kb/demo" variant="outline" color="neutral"
-      >查看演示知识库 →</UButton
-    >
   </section>
 </template>

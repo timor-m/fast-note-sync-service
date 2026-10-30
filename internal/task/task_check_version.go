@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -16,19 +17,17 @@ import (
 )
 
 const (
-	GitHubServiceReleaseURL = "https://api.github.com/repos/haierkeys/fast-note-sync-service/releases"
-	GitHubPluginReleaseURL  = "https://api.github.com/repos/haierkeys/obsidian-fast-note-sync/releases"
-	ServiceRepoPath         = "haierkeys/fast-note-sync-service"
-	ServiceRepoURL          = "https://github.com/" + ServiceRepoPath
-	PluginRepoPath          = "haierkeys/obsidian-fast-note-sync"
-	PluginRepoURL           = "https://github.com/" + PluginRepoPath
+	DockerHubTagsURL       = "https://hub.docker.com/v2/repositories/timorm/fast-note-sync-service/tags/?page_size=100&ordering=last_updated"
+	DockerHubRepositoryURL = "https://hub.docker.com/r/timorm/fast-note-sync-service"
+	GitHubPluginReleaseURL = "https://api.github.com/repos/haierkeys/obsidian-fast-note-sync/releases"
+	ServiceRepoPath        = "timor-m/fast-note-sync-service"
+	ServiceRepoURL         = "https://github.com/" + ServiceRepoPath
+	PluginRepoPath         = "haierkeys/obsidian-fast-note-sync"
+	PluginRepoURL          = "https://github.com/" + PluginRepoPath
 
-	CNBServiceReleaseURL = "https://api.cnb.cool/" + ServiceRepoPath + "/-/releases"
-	CNBPluginReleaseURL  = "https://api.cnb.cool/" + PluginRepoPath + "/-/releases"
-	CNBServiceURL        = "https://cnb.cool/" + ServiceRepoPath
-	CNBPluginURL         = "https://cnb.cool/" + PluginRepoPath
-	CNBServiceToken      = "58tjez3744HL9Z10cRaCHdeEPhK"
-	CNBPluginToken       = "9pFNKcjlej36e0w6MHKT6YMn53G"
+	CNBPluginReleaseURL = "https://api.cnb.cool/" + PluginRepoPath + "/-/releases"
+	CNBPluginURL        = "https://cnb.cool/" + PluginRepoPath
+	CNBPluginToken      = "9pFNKcjlej36e0w6MHKT6YMn53G"
 
 	// fetchHTTPTimeout bounds each release-list HTTP request so a hung source
 	// can't stall the whole task; the task-layer fallback then retries the other source.
@@ -94,19 +93,16 @@ func (t *CheckVersionTask) Run(ctx context.Context) error {
 	// 下方 task 层 fallback 保证即使探测选错源，也会回退另一源重试一次。
 	githubFirst := t.app.IsPullFromGitHub()
 
-	// Service releases (with fallback)
-	// 服务端版本（带回退）
-	serviceUsedGitHub, serviceReleases, serviceLink, serviceChangelog, serviceChangelogContent, err :=
-		t.fetchReleasesWithFallback(ctx, GitHubServiceReleaseURL, CNBServiceReleaseURL, CNBServiceToken, true, githubFirst)
+	// Product versions come only from this fork's published Docker tags.
+	serviceReleases, err := t.fetchDockerHubReleasesCtx(ctx, DockerHubTagsURL)
 	if err != nil {
-		return fmt.Errorf("fetch service releases: %w", err)
+		return fmt.Errorf("fetch Docker Hub service tags: %w", err)
 	}
+	serviceLink, serviceChangelog, serviceChangelogContent := buildLinks(serviceReleases, true, true)
 
-	// Plugin releases (prefer the same source the service fetch actually used,
-	// so service & plugin versions come from the same mirror)
-	// 插件版本（优先用服务端实际命中的源，保证服务端与插件版本来自同一镜像）
+	// The Obsidian plugin retains its own upstream release sources.
 	pluginReleases, pluginLink, pluginChangelog, pluginChangelogContent, perr :=
-		t.fetchReleasesWithFallbackLinksOnly(ctx, GitHubPluginReleaseURL, CNBPluginReleaseURL, CNBPluginToken, false, serviceUsedGitHub)
+		t.fetchReleasesWithFallbackLinksOnly(ctx, GitHubPluginReleaseURL, CNBPluginReleaseURL, CNBPluginToken, false, githubFirst)
 	if perr != nil {
 		// Plugin version is best-effort; don't fail the whole task if only plugin fetch errors.
 		// 插件版本尽力而为：仅插件抓取失败不应导致整个任务失败。
@@ -136,15 +132,8 @@ func (t *CheckVersionTask) Run(ctx context.Context) error {
 	}
 
 	info := pkgapp.CheckVersionInfo{
-		// GithubAvailable now means "the source the version info was ACTUALLY
-		// fetched from is GitHub". This keeps the upgrade download URL (decided
-		// from this field in handler_admin_control.Upgrade) consistent with the
-		// source that produced the version data, fixing the old probe/upgrade
-		// mismatch where the probe said GitHub but the download went 404.
-		// GithubAvailable 现在表示「版本信息实际命中的源是 GitHub」，使升级下载地址
-		// （在 handler_admin_control.Upgrade 中由本字段决定）与产生版本数据的源一致，
-		// 修复过去「探测说 GitHub 但下载 404」的不一致。
-		GithubAvailable:                  serviceUsedGitHub,
+		// Retained for legacy plugin source selection; service updates use Docker.
+		GithubAvailable:                  githubFirst,
 		VersionNewName:                   serviceLatest,
 		VersionIsNew:                     serviceLatest != "" && semver.Compare(serviceLatest, currentServiceVersion) > 0,
 		VersionNewLink:                   serviceLink,
@@ -164,6 +153,40 @@ func (t *CheckVersionTask) Run(ctx context.Context) error {
 	t.app.BroadcastClientInfo()
 
 	return nil
+}
+
+// Docker version tags are independent from upstream Go releases and aliases.
+func (t *CheckVersionTask) fetchDockerHubReleasesCtx(ctx context.Context, endpoint string) ([]pkgapp.HistoricalVersion, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := (&http.Client{Timeout: fetchHTTPTimeout}).Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Docker Hub returned status: %d", resp.StatusCode)
+	}
+	var tags struct {
+		Results []struct {
+			Name string `json:"name"`
+		} `json:"results"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1024*1024)).Decode(&tags); err != nil {
+		return nil, err
+	}
+	releases := make([]pkgapp.HistoricalVersion, 0)
+	for _, tag := range tags.Results {
+		version := "v" + strings.TrimPrefix(tag.Name, "v")
+		if !semver.IsValid(version) || (t.app.Config().App.PullReleaseChannel == "stable" && semver.Prerelease(version) != "") {
+			continue
+		}
+		releases = append(releases, pkgapp.HistoricalVersion{Version: version})
+	}
+	sort.Slice(releases, func(i, j int) bool { return semver.Compare(releases[i].Version, releases[j].Version) > 0 })
+	return releases, nil
 }
 
 // fetchReleasesWithFallback tries the primary source first; on failure/empty it
@@ -237,24 +260,19 @@ func buildLinks(releases []pkgapp.HistoricalVersion, isService, fromGitHub bool)
 	if len(releases) == 0 {
 		return "", "", ""
 	}
+	if isService {
+		return DockerHubRepositoryURL + "/tags?name=" + strings.TrimPrefix(releases[0].Version, "v"), ServiceRepoURL + "/commits/master/", ""
+	}
 	latest := releases[0].Version
 	changelogContent = releases[0].ChangelogContent
 	latestClean := strings.TrimPrefix(latest, "v")
-	if fromGitHub {
-		base := ServiceRepoURL
-		if !isService {
-			base = PluginRepoURL
-		}
-		link = base + "/releases/tag/" + latestClean
-		changelogLink = base + "/releases/download/" + latestClean + "/changelog.txt"
-	} else {
-		base := CNBServiceURL
-		if !isService {
-			base = CNBPluginURL
-		}
-		link = base + "/-/releases/tag/" + latestClean
-		changelogLink = base + "/-/releases/download/" + latestClean + "/changelog.txt"
+	base, prefix := PluginRepoURL, "/releases/"
+	if !fromGitHub {
+		base, prefix = CNBPluginURL, "/-/releases/"
 	}
+	link = base + prefix + "tag/" + latestClean
+	changelogLink = base + prefix + "download/" + latestClean + "/changelog.txt"
+
 	return link, changelogLink, changelogContent
 }
 

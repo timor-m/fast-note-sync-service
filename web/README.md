@@ -39,10 +39,10 @@ npm run smoke:docker
 - `/`：响应式门户，支持明暗主题。
 - `/login`：复用 Go 账号，通过服务端 BFF 登录、退出及处理过期。
 - `/app`：真实用户信息、Vault 列表、按 Vault 读取的最近笔记。
-- `/kb/demo`：明确标识的演示知识库，其他 slug 返回 404。
+- 不提供演示知识库，`/kb/*` 返回 404。
 - `/s/:token?id=:resourceId`：原分享授权、密码校验、只读文本预览。原 `/share/:side/:token` 继续使用旧 React。
 
-各页面使用独立 TDK 和社交元信息；无密码分享的标题/摘要由服务端预取，预取不计 PV。所有分享、演示知识库、登录和个人工作台均默认禁止搜索收录。密码分享在未解锁时不输出笔记标题/摘要。生产 canonical 可配置 `FNS_SITE_URL`，本地开发用 `NUXT_PUBLIC_SITE_URL`。浏览统计复用 Go 既有分享记录与原后台，口径和延迟见[统计说明](../docker/NUXT.md#分享浏览统计与-tdk)。
+各页面使用独立 TDK 和社交元信息；无密码分享的标题/摘要由服务端预取，预取不计 PV。所有分享、登录和个人工作台均默认禁止搜索收录。密码分享在未解锁时不输出笔记标题/摘要。生产 canonical 可配置 `FNS_SITE_URL`，本地开发用 `NUXT_PUBLIC_SITE_URL`。浏览统计复用 Go 既有分享记录与原后台，口径和延迟见[统计说明](../docker/NUXT.md#分享浏览统计与-tdk)。
 
 完整 Markdown Renderer、AST/Shiki、双链、编辑器和知识库发布管理仍留在后续阶段，不为当前文本预览加入未使用的依赖或包装层。
 

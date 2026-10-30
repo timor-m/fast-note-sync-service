@@ -376,10 +376,6 @@ func (s *shareService) VerifyShare(ctx context.Context, token string, rid string
 		return nil, domain.ErrShareCancelled // Resource not authorized // 资源未授权
 	}
 
-	// In-memory record access statistics (delayed 5 minutes update)
-	// 内存记录访问统计 (延迟 5 分钟更新)
-	s.RecordView(share.UID, share.ID)
-
 	return entity, nil
 }
 
@@ -431,6 +427,17 @@ func (s *shareService) flush() {
 	for id, stats := range tempBuffer {
 		if err := s.repo.UpdateViewStats(ctx, stats.uid, id, stats.viewCount, stats.lastViewedAt); err != nil {
 			s.logger.Error("failed to flush user_share stats", zap.Int64("id", id), zap.Error(err))
+			// Preserve failed increments alongside views received during the flush.
+			s.bufferMu.Lock()
+			if pending, ok := s.statsBuffer[id]; ok {
+				pending.viewCount += stats.viewCount
+				if stats.lastViewedAt.After(pending.lastViewedAt) {
+					pending.lastViewedAt = stats.lastViewedAt
+				}
+			} else {
+				s.statsBuffer[id] = stats
+			}
+			s.bufferMu.Unlock()
 		}
 	}
 }

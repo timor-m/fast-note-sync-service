@@ -89,18 +89,6 @@
 * **🗄️ 多資料庫支援**：
   * 原生支援 SQLite、MySQL、PostgreSQL 等多種主流資料庫，滿足從個人到團隊的不同部署需求。
 
-## ☕ 贊助與支援
-
-- 如果覺得此外掛程式很有用，並且想要它繼續開發，請在以下方式支持我：
-
-  | Ko-fi *非中國地區*                                                                               |    | 微信掃碼打賞 *中國地區*                        |
-  |--------------------------------------------------------------------------------------------------|----|------------------------------------------------|
-  | [<img src="/docs/images/kofi.png" alt="BuyMeACoffee" height="150">](https://ko-fi.com/haierkeys) | 或 | <img src="/docs/images/wxds.png" height="150"> |
-
-  - 已支持名單：
-    - <a href="https://github.com/haierkeys/fast-note-sync-service/blob/master/docs/Support.zh-TW.md">Support.zh-TW.md</a>
-    - <a href="https://cnb.cool/haierkeys/fast-note-sync-service/-/blob/master/docs/Support.zh-TW.md">Support.zh-TW.md (cnb.cool 鏡像庫)</a>
-
 ## ⏱️ 更新日誌
 
 - ♨️ [存取查看更新日誌](/docs/CHANGELOG.zh-TW.md)

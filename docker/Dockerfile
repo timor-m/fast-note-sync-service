@@ -1,52 +1,45 @@
-FROM woahbase/alpine-glibc:latest
-MAINTAINER HaierKeys <haierkeys@gmail.com>
-ARG TARGETOS
-ARG TARGETARCH
+FROM golang:1.26-bookworm AS go-build
+WORKDIR /src
 ARG VERSION
 ARG BUILD_DATE
 ARG GIT_COMMIT
+COPY . .
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
+    flags="-s -w -X github.com/haierkeys/fast-note-sync-service/internal/app.GitTag=${GIT_COMMIT:-local} -X github.com/haierkeys/fast-note-sync-service/internal/app.BuildTime=${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" && \
+    if [ -n "$VERSION" ]; then flags="$flags -X github.com/haierkeys/fast-note-sync-service/internal/app.Version=$VERSION"; fi && \
+    CGO_ENABLED=0 go build -trimpath -ldflags "$flags" -o /out/fast-note-sync-service .
 
-ARG VERSION=${VERSION}
-ARG BUILD_DATE=${BUILD_DATE}
-ARG GIT_COMMIT=${GIT_COMMIT}
+FROM node:22-bookworm-slim AS web-build
+WORKDIR /app
+COPY web/package*.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci
+COPY web/ ./
+RUN npm run build
 
-
-
-LABEL name="fast-note-sync-service"
-LABEL version=${VERSION}
-LABEL description="Provide image resizing, cropping, upload/download, and cloud storage features for Obsidian CIAU."
-LABEL maintainer="HaierKeys <haierkeys@gmail.com>"
-
-
-LABEL org.opencontainers.image.title="Fast Note Sync Service"
-LABEL org.opencontainers.image.created=${BUILD_DATE}
-LABEL org.opencontainers.image.authors="HaierKeys <haierkeys@gmail.com>"
-LABEL org.opencontainers.image.version=${VERSION}
-LABEL org.opencontainers.image.description="Provide image resizing, cropping, upload/download, and cloud storage features for Obsidian CIAU."
-LABEL org.opencontainers.image.url="https://github.com/haierkeys/fast-note-sync-service"
-LABEL org.opencontainers.image.source="https://github.com/haierkeys/fast-note-sync-service"
-LABEL org.opencontainers.image.documentation="https://raw.githubusercontent.com/haierkeys/fast-note-sync-service/refs/heads/main/README.md"
-LABEL org.opencontainers.image.revision=${GIT_COMMIT}
-LABEL org.opencontainers.image.licenses="Apache-2.0"
-LABEL org.opencontainers.image.vendor="HaierKeys"
-
-
-
-ENV TZ=Asia/Shanghai
-ENV P_NAME=fast-note-sync
-ENV P_BIN=fast-note-sync-service
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
-    apk --no-cache add --no-progress libstdc++ curl ca-certificates bash gcompat tzdata && \
-    cp /usr/share/zoneinfo/${TZ} /etc/localtime && \
-    echo ${TZ} > /etc/timezone && \
-    mkdir -p /${P_NAME}/
-
+FROM node:22-bookworm-slim
+ARG SOURCE_URL=https://github.com/timor-m/fast-note-sync-service
+ARG VERSION
+ARG BUILD_DATE
+ARG GIT_COMMIT
+LABEL org.opencontainers.image.title="Fast Note Sync Service" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${GIT_COMMIT}" \
+      org.opencontainers.image.source="${SOURCE_URL}"
+ENV TZ=Asia/Shanghai NODE_ENV=production \
+    FNS_WEB_FRONTEND_ENABLED=true \
+    FNS_WEB_FRONTEND_TARGET=http://127.0.0.1:3000 \
+    FNS_API_BASE_URL=http://127.0.0.1:9000 \
+    FNS_SESSION_DIR=/fast-note-sync/storage/web-sessions \
+    FNS_SESSION_SECURE=true
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl tzdata tini gosu && rm -rf /var/lib/apt/lists/*
+WORKDIR /fast-note-sync
+COPY --from=go-build /out/fast-note-sync-service ./fast-note-sync-service
+COPY --from=web-build --chown=node:node /app/.output ./web/.output
+COPY --chmod=755 docker/entrypoint.sh /entrypoint.sh
 EXPOSE 9000 9001
-VOLUME /${P_NAME}/config
-VOLUME /${P_NAME}/storage
-COPY ./build/${TARGETOS}_${TARGETARCH}/${P_BIN} /${P_NAME}/
-COPY ./docker/entrypoint.sh  /entrypoint.sh
-
-RUN chmod +x /entrypoint.sh /${P_NAME}/${P_BIN}
-
-ENTRYPOINT ["/entrypoint.sh"]
+VOLUME ["/fast-note-sync/config", "/fast-note-sync/storage"]
+# Core health stays independent from Nuxt; /api/frontend/health checks the frontend.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 CMD curl -fsS http://127.0.0.1:9000/api/health || exit 1
+ENTRYPOINT ["/usr/bin/tini", "-g", "--", "/entrypoint.sh"]
+CMD ["run"]

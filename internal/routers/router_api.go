@@ -72,7 +72,6 @@ func registerAPIRoutes(r *gin.Engine, appContainer *app.App, wss *pkgapp.Websock
 		// Add server version interface (no auth required)
 		// 添加服务端版本号接口（无需认证）
 		api.GET("/version", versionHandler.ServerVersion)
-		api.GET("/support", versionHandler.Support)
 
 		// Health check interface (no auth required)
 		// 健康检查接口（无需认证）
@@ -84,7 +83,8 @@ func registerAPIRoutes(r *gin.Engine, appContainer *app.App, wss *pkgapp.Websock
 		share := api.Group("/share")
 		share.Use(middleware.ShareAuthToken(appContainer.ShareService))
 		{
-			share.GET("/note", shareHandler.NoteGet) // Get shared note
+			share.GET("/meta", shareHandler.NoteMetadata) // Authorized preview, without counting a view
+			share.GET("/note", shareHandler.NoteGet)      // Get shared note
 			// 获取分享的笔记
 			share.GET("/file", shareHandler.FileGet) // Get shared file content
 			// 获取分享的文件内容

@@ -1,13 +1,21 @@
 services:
   fast-note-sync-service:
-    image: haierkeys/fast-note-sync-service:latest
-    container_name: fast-note-sync-service
+    image: ${FNS_IMAGE:-fast-note-sync-service:local}
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    stop_grace_period: 35s
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${FNS_PUBLIC_PORT:-9000}:9000"
+    environment:
+      NUXT_PUBLIC_SITE_URL: "${FNS_SITE_URL:-}"
+      FNS_WEB_FRONTEND_ENABLED: "${FNS_WEB_FRONTEND_ENABLED:-true}"
+      FNS_WEB_FRONTEND_TARGET: "${FNS_WEB_FRONTEND_TARGET:-http://127.0.0.1:3000}"
+      FNS_WEB_FRONTEND_TIMEOUT: "${FNS_WEB_FRONTEND_TIMEOUT:-30s}"
+      FNS_WEB_FRONTEND_FALLBACK: "${FNS_WEB_FRONTEND_FALLBACK:-true}"
+      FNS_SESSION_PASSWORD: "${FNS_SESSION_PASSWORD:-}"
+      FNS_SESSION_SECURE: "${FNS_SESSION_SECURE:-true}"
     volumes:
-      - /data/fast-note-sync/storage/:/fast-note-sync/storage/
-      - /data/fast-note-sync/config/:/fast-note-sync/config/
-    networks:
-      - app-network  # 与 image-api 在同一网络1
-
+      - ${FNS_DATA_DIR:-/data/fast-note-sync}/storage:/fast-note-sync/storage
+      - ${FNS_DATA_DIR:-/data/fast-note-sync}/config:/fast-note-sync/config

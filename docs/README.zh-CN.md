@@ -1,225 +1,109 @@
-[简体中文](https://github.com/haierkeys/fast-note-sync-service/blob/master/docs/README.zh-CN.md) / [English](https://github.com/haierkeys/fast-note-sync-service/blob/master/README.md) / [日本語](https://github.com/haierkeys/fast-note-sync-service/blob/master/docs/README.ja.md) / [한국어](https://github.com/haierkeys/fast-note-sync-service/blob/master/docs/README.ko.md) / [繁體中文](https://github.com/haierkeys/fast-note-sync-service/blob/master/docs/README.zh-TW.md)
+# Fast Note Sync Service
 
-有问题请新建 [issue](https://github.com/haierkeys/fast-note-sync-service/issues/new) , 或加入电报交流群寻求帮助: [https://t.me/obsidian_users](https://t.me/obsidian_users)
+[简体中文](README.zh-CN.md) / [English](../README.md)
 
-中国大陆地区，推荐使用腾讯 `cnb.cool` 镜像库: [https://cnb.cool/haierkeys/fast-note-sync-service](https://cnb.cool/haierkeys/fast-note-sync-service)
+面向 Obsidian 的自托管笔记同步服务，集成 Nuxt 4 前台、原 React 管理后台、REST API 和 MCP。本仓库基于 [haierkeys/fast-note-sync-service](https://github.com/haierkeys/fast-note-sync-service) 扩展，将 Go 与 Nuxt 合并为**一个镜像、一个容器**部署。
 
+笔记同步需配合 [Obsidian Fast Note Sync 插件](https://github.com/haierkeys/obsidian-fast-note-sync)。本分支的问题请提交至[当前仓库 Issues](https://github.com/timor-m/fast-note-sync-service/issues)。
 
-<h1 align="center">Fast Note Sync Service</h1>
+## 当前功能
 
-<p align="center">
-    <a href="https://github.com/haierkeys/fast-note-sync-service/releases"><img src="https://img.shields.io/github/release/haierkeys/fast-note-sync-service?style=flat-square" alt="release"></a>
-    <a href="https://github.com/haierkeys/fast-note-sync-service/releases"><img src="https://img.shields.io/github/v/tag/haierkeys/fast-note-sync-service?label=release-alpha&style=flat-square" alt="alpha-release"></a>
-    <a href="https://github.com/haierkeys/fast-note-sync-service/blob/master/LICENSE"><img src="https://img.shields.io/github/license/haierkeys/fast-note-sync-service?style=flat-square" alt="license"></a>
-    <img src="https://img.shields.io/badge/Language-Go-00ADD8?style=flat-square" alt="Go">
-</p>
+- **笔记同步**：沿用原有笔记、附件、目录、配置、历史记录、回收站、备份和存储集成，以及 WebSocket 同步能力。
+- **Nuxt 前台**：响应式门户、账号登录、读取真实笔记库和最近笔记的个人工作台，以及复用原 Go 分享权限和密码校验的分享入口。
+- **原管理后台**：`/webgui/` 保留 React 后台，继续负责注册、插件配置和管理操作；原 `/share/:side/:token` 分享链接继续可用。
+- **接口集成**：REST API、MCP StreamableHTTP/SSE，以及原有 SQLite、MySQL、PostgreSQL 支持继续由 Go 提供。
 
-<p align="center">
-  <strong>高性能、低延迟的笔记同步, 在线管理, 远端 REST API 服务平台</strong>
-  <br>
-  <em>基于 Golang + Websocket + React 构建</em>
-</p>
+`/kb/demo` 目前是明确标识的演示知识库。新 `/s/:token?id=:resourceId` 分享页目前提供只读文本预览；完整 Markdown 渲染、双链、在线编辑和知识库发布管理仍待后续实现。OIDC 登录继续在原 WebGUI 中使用，新登录页目前采用账号密码登录。
 
-<p align="center">
-  数据提供需配合客户端插件使用：<a href="https://github.com/haierkeys/obsidian-fast-note-sync">Obsidian Fast Note Sync Plugin</a>
-</p>
+分享浏览统计复用原后台：每次成功读取笔记累计一次 PV，元信息预览、失败访问及附件请求不计数，约 5 分钟聚合落库。页面提供独立 TDK 和社交分享元信息，无密码分享在服务端输出标题与摘要，密码分享使用通用预览信息；所有分享链接默认禁止搜索收录。统计口径、限制和站点域名配置见[浏览统计与 TDK](../docker/NUXT.md#分享浏览统计与-tdk)。
 
-<div align="center">
-  <div align="center">
-    <a href="/docs/images/vault.png"><img src="/docs/images/vault.png" alt="fast-note-sync-service-preview" width="400" /></a>
-    <a href="/docs/images/attach.png"><img src="/docs/images/attach.png" alt="fast-note-sync-service-preview" width="400" /></a>
-    </div>
-  <div align="center">
-    <a href="/docs/images/note.png"><img src="/docs/images/note.png" alt="fast-note-sync-service-preview" width="400" /></a>
-    <a href="/docs/images/setting.png"><img src="/docs/images/setting.png" alt="fast-note-sync-service-preview" width="400" /></a>
-  </div>
-</div>
+## 快速开始：从源码构建
 
----
+Docker 构建会同时生成 Go 服务和 Nuxt 前台，无需单独部署前端容器：
 
-## 🎯 核心功能
-
-* **🧰 MCP (Model Context Protocol) 原生支持**：
-  * `FNS` 可以作为 MCP 服务端接入 `Cherry Studio`、`Cursor` 等兼容的 AI 客户端，即可让 AI 具备读写私人笔记与附件的能力，且所有变更实时同步到各端。
-* **🚀 REST API 支持**：
-  * 提供标准的 REST API 接口，支持通过编程方式（如自动化脚本、AI 助手集成）对 Obsidian 笔记进行增删改查。
-  * 详情请参阅 [RESTful API 文档](/docs/REST_API.md) 或 [OpenAPI 文档](/docs/swagger.yaml)。
-* **💻 Web 管理面板**：
-  * 内置现代化管理界面，轻松创建用户、生成插件配置、管理仓库及笔记内容。
-  * 支持 WebGUI OIDC 登录。请参阅 [OIDC 登录运行手册](/docs/runbook/OIDC.zh-CN.md)。
-* **🔄 多端笔记同步**：
-  * 支持 **Vault (仓库)** 自动创建。
-  * 支持笔记管理（增、删、改、查），变更毫秒级实时分发至所有在线设备。
-* **🖼️ 附件同步支持**：
-  * 完美支持图片等非笔记文件同步。
-  * 支持大附件 分片上传下载，分片大小可配置，提升同步效率。
-* **⚙️ 配置同步**：
-  * 支持 `.obsidian` 配置文件的同步。
-  * 支持 `PDF` 进度状态同步。
-* **📝 笔记历史**：
-  * 可以在 Web 页面，插件端查看每一个笔记的 历史修改版本。
-  * (需服务端 v1.2+ )
-* **🗑️ 回收站**：
-  * 支持笔记删除后，自动进入回收站。
-  * 支持从回收站恢复笔记。(后续会陆续新增附件恢复功能)
-
-* **🚫 离线同步策略**：
-  * 支持笔记离线编辑自动合并。(需要插件端设置)
-  * 离线删除，重连之后自动补全或删除同步。(需要插件端设置)
-
-* **🔗 分享功能**：
-  * 可以 创建/取消 笔记分享。
-  * 自动解析分享笔记中引用的图片、音视频等附件。
-  * 提供分享访问统计功能。
-  * 可以设置分享笔记的访问密码。
-  * 可以对分享笔记生成短链接。
-* **📂 目录同步**：
-  * 支持文件夹的 创建/重命名/移动/删除 同步。
-
-* **🌳 Git 自动化**：
-  * 当附件和笔记发生变更时，自动更新并推送至远程 Git 仓库。
-  * 任务结束后自动释放系统内存。
-
-* **☁️ 多存储备份与单向镜像同步**：
-  * 适配 S3/OSS/R2/WebDAV/本地 等多种存储协议。
-  * 支持全量/增量 ZIP 定时归档备份。
-  * 支持 Vault 资源单向镜像同步至远程存储。
-  * 自动清理过期备份，支持自定义保留天数。
-
-* **🗄️ 多数据库支持**：
-  * 原生支持 SQLite、MySQL、PostgreSQL 等多种主流数据库，满足从个人到团队的不同部署需求。
-
-## ☕ 赞助与支持
-
-- 如果觉得这个插件很有用，并且想要它继续开发，请在以下方式支持我:
-
-  | Ko-fi *非中国地区*                                                                               |    | 微信扫码打赏 *中国地区*                        |
-  |--------------------------------------------------------------------------------------------------|----|------------------------------------------------|
-  | [<img src="/docs/images/kofi.png" alt="BuyMeACoffee" height="150">](https://ko-fi.com/haierkeys) | 或 | <img src="/docs/images/wxds.png" height="150"> |
-
-  - 已支持名单：
-    - <a href="https://github.com/haierkeys/fast-note-sync-service/blob/master/docs/Support.zh-CN.md">Support.zh-CN.md</a>
-    - <a href="https://cnb.cool/haierkeys/fast-note-sync-service/-/blob/master/docs/Support.zh-CN.md">Support.zh-CN.md (cnb.cool 镜像库)</a>
-
-## ⏱️ 更新日志
-
-- ♨️ [访问查看更新日志](/docs/CHANGELOG.zh-CN.md)
-
-## 🗺️ 路线图 (Roadmap)
-
-- [ ] 增加 WebSocket `Protobuf` 传输格式的支持, 强化同步传输效率.
-- [ ] 对现有授权机制进行隔离以及优化,  提升整体安全性.
-- [ ] 增加 WebGui 笔记实时更新
-- [ ] 增加客户端 点对点 消息传送(非笔记&附件,类似localsend功能,不支持客户端保存, 可保存到服务端)
-- [ ] 各类帮助文档完善
-- [ ] 更多的内网穿透(中继网关)的支持
-- [ ] 快速部署计划
-  * 只需要提供服务器地址(公网), 账号密码 即可完成 FNS 服务端的部署
-- [ ] 优化现有的离线笔记合并方案, 增加冲突处理机制
-
-我们正在持续改进，以下是未来的开发计划：
-
-> **如果您有改进建议或新想法，欢迎通过提交 issue 与我们分享——我们会认真评估并采纳合适的建议。**
-
-## 🚀 快速部署
-
-我们提供多种安装方式，推荐使用 **一键脚本** 或 **Docker**。
-
-### 方式一：一键脚本（推荐）
-
-自动检测系统环境并完成安装、服务注册。
-
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/haierkeys/fast-note-sync-service/master/scripts/quest_install.sh)
+```sh
+git clone https://github.com/timor-m/fast-note-sync-service.git
+cd fast-note-sync-service
+# 直接 HTTP 测试；HTTPS 生产部署应使用 FNS_SESSION_SECURE=true。
+FNS_SESSION_SECURE=false docker compose -f docker/docker-compose.yaml up -d --build
 ```
 
-中国地区可以使用腾讯 `cnb.cool` 镜像源
-```bash
-bash <(curl -fsSL https://cnb.cool/haierkeys/fast-note-sync-service/-/git/raw/master/scripts/quest_install.sh) --cnb
+访问 `http://服务器IP:9000`。HTTPS 生产环境保持默认的 `FNS_SESSION_SECURE=true`。需要持久配置时，参考 [docker/.env.example](../docker/.env.example) 创建 `docker/.env`，并在 Compose 命令中加入 `--env-file docker/.env`。
+
+对外入口为 Go 的 **9000 端口**。Nuxt 只监听**容器内部的 `127.0.0.1:3000`**，无需映射 3000。原配置若使用其他独立服务端口，再按实际需求增加映射。
+
+| 路径 | 用途 |
+| --- | --- |
+| `/` | Nuxt 门户首页 |
+| `/login`、`/app` | 新登录页和个人工作台 |
+| `/webgui/` | 原 React 管理后台与注册入口 |
+| `/kb/demo` | 演示知识库 |
+| `/s/:token?id=:resourceId` | 新分享文本预览 |
+| `/share/:side/:token` | 原分享页面 |
+| `/api/*` | 原业务、同步与 MCP 接口 |
+| `/api/frontend/*` | Nuxt 服务端接口适配层 |
+
+首次使用时，在允许注册的情况下进入 `/webgui/` 注册账号，再从后台复制 API 配置到 Obsidian 插件。已有账号也可以通过 `/login` 登录新前台；Nuxt 与 React 的登录会话相互独立。
+
+## 旧数据复用与升级
+
+默认挂载路径沿用原项目：
+
+| 宿主机目录 | 容器目录 | 内容 |
+| --- | --- | --- |
+| `/data/fast-note-sync/config` | `/fast-note-sync/config` | 原服务配置及新增前台会话密钥 |
+| `/data/fast-note-sync/storage` | `/fast-note-sync/storage` | 默认数据库、附件及新增前台会话 |
+
+切换前备份数据并停止旧容器，沿用完整的原目录、数据库连接配置、外部数据库网络和自定义存储挂载。本次前台整合未修改原数据库模型；若同时升级 Go 服务版本，仍会执行原项目已有的启动迁移逻辑。不要让两个 Go 实例同时操作同一 SQLite 数据库。新增会话文件位于 `storage/web-sessions`，自动生成的会话密钥位于 `config/.web-session-key`。
+
+原数据位于其他位置时，用 `FNS_DATA_DIR` 指向包含原 `config` 和 `storage` 的父目录。迁移、反向代理、会话与回滚操作详见[单容器部署说明](../docker/NUXT.md)。
+
+## GitHub 构建与 Docker Hub 镜像
+
+[Docker Hub 工作流](../.github/workflows/docker.yml) 在推送 `master` 时自动运行，也支持选择 `master` 手动运行。先执行 Go/Nuxt 测试、类型检查和完整镜像的单容器集成检查，再推送 `linux/amd64`、`linux/arm64` 镜像。
+
+- 仓库 Secrets：`DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`。
+- 可选仓库 Variable：`DOCKERHUB_IMAGE`，默认 `timorm/fast-note-sync-service`。
+- 标签取自 `internal/app/version.go`，当前为 `1.0.0`；只推送版本标签，不更新 `latest`。同版本重新构建会更新该标签，可使用工作流摘要中的 digest 固定某次构建。
+
+**本次单容器实现的首次镜像发布尚未完成。** 在[本仓库 Actions](https://github.com/timor-m/fast-note-sync-service/actions) 确认对应版本发布成功前，请使用上面的源码构建方式。镜像发布后，在仓库根目录执行：
+
+```sh
+export FNS_IMAGE=docker.io/timorm/fast-note-sync-service:1.0.0
+docker compose -f docker/docker-compose.yaml pull
+docker compose -f docker/docker-compose.yaml up -d --no-build
 ```
 
+直接 HTTP 部署时，还需在 `up` 命令或环境文件中设置 `FNS_SESSION_SECURE=false`。上游 Docker 镜像、一键安装脚本及 Go 二进制发布包不包含本仓库整合的 Nuxt 前台。
 
-**脚本主要行为：**
+## 开发与验证
 
-  * 自动下载适配当前系统的 Release 二进制文件。
-  * 默认安装至 `/opt/fast-note`，并在 `/usr/local/bin/fns` 创建全局快捷命令 `fns`。
-  * 配置并启动 Systemd（Linux）或 Launchd（macOS）服务，实现开机自启。
-  * **管理命令**：`fns [install|uninstall|start|stop|status|update|menu]`
-  * **交互菜单**：直接运行 `fns` 可进入交互菜单，支持安装/升级、服务控制、开机自启配置，以及在 GitHub / CNB 镜像之间切换。
+| 目录 | 职责 |
+| --- | --- |
+| `internal/`、`cmd/`、`pkg/` | 原 Go 服务与业务接口 |
+| `web/` | Nuxt 4 SSR 前台与服务端接口适配 |
+| `frontend/` | 嵌入 Go 的原 React 构建资源 |
+| `docker/` | 统一 Dockerfile、入口脚本、Compose 和部署说明 |
 
------
+本地开发需要 Go 1.26 和符合 `web/package.json` 要求的 Node 版本。两进程开发方式见[前台开发说明](../web/README.md)；使用 Docker 构建时会提供所需工具链和运行环境。
 
-### 方式二：Docker 部署
-
-#### Docker Run
-
-```bash
-# 1. 拉取镜像
-docker pull haierkeys/fast-note-sync-service:latest
-
-# 2. 启动容器
-docker run -tid --name fast-note-sync-service \
-    -p 9000:9000 \
-    -v /data/fast-note-sync/storage/:/fast-note-sync/storage/ \
-    -v /data/fast-note-sync/config/:/fast-note-sync/config/ \
-    haierkeys/fast-note-sync-service:latest
+```sh
+go test ./...
+cd web
+npm ci
+npm test
+npm run typecheck
+npm run build
 ```
 
-#### Docker Compose
+构建 `fast-note-sync-service:local` 后，在 `web/` 执行 `npm run smoke:docker`，使用临时数据检查原接口兼容、SSR、分享、附件、MCP、WebSocket 和进程恢复。详情见[单容器验证记录](../web/docs/single-container-verification.md)。真实 Obsidian 多设备同步仍需要插件和实际设备回归。
 
-创建 `docker-compose.yaml` 文件：
+## 文档与上游
 
-```yaml
-version: '3'
-services:
-  fast-note-sync-service:
-    image: haierkeys/fast-note-sync-service:latest
-    container_name: fast-note-sync-service
-    restart: always
-    ports:
-      - "9000:9000"  # RESTful API & WebSocket 端口 其中 /api/user/sync 为 WebSocket 接口地址
-    volumes:
-      - ./storage:/fast-note-sync/storage  # 数据存储
-      - ./config:/fast-note-sync/config    # 配置文件
-```
-
-启动服务：
-
-```bash
-docker compose up -d
-```
-
------
-
-### 方式三：手动二进制安装
-
-从 [Releases](https://github.com/haierkeys/fast-note-sync-service/releases) 下载对应系统的最新版本，解压后运行：
-
-```bash
-./fast-note-sync-service run -c config/config.yaml
-```
-
-## 📖 使用指南
-
-1.  **访问管理面板**：
-    在浏览器打开 `http://{服务器IP}:9000`。
-2.  **初始化设置**：
-    首次访问需注册账号。*(如需关闭注册功能，请在配置文件中设置 `user.register-is-enable: false`)*
-3.  **配置客户端**：
-    登录管理面板，点击 **“复制 API 配置”**。
-4.  **连接 Obsidian**：
-    打开 Obsidian 插件设置页面，粘贴刚才复制的配置信息即可。
-
-
-## ⚙️ 配置说明
-
-默认配置文件为 `config.yaml`，程序会自动在 **根目录** 或 **config/** 目录下查找。
-
-查看完整配置示例：[config/config.yaml](https://github.com/haierkeys/fast-note-sync-service/blob/master/config/config.yaml)
-
-## 🌐 Nginx 反代配置示例
-
-查看完整配置示例：[https-nginx-example.conf](https://github.com/haierkeys/fast-note-sync-service/blob/master/scripts/https-nginx-example.conf)
+- [配置示例](../config/config.yaml)、[Nginx 反代示例](../scripts/https-nginx-example.conf)。
+- [REST API](REST_API.md)、[OpenAPI](swagger.yaml)、[WebGUI OIDC](runbook/OIDC.zh-CN.md)。
+- [上游更新日志](CHANGELOG.zh-CN.md)；本分支新增能力以本页和单容器部署说明为准。
+- [上游项目](https://github.com/haierkeys/fast-note-sync-service)、[许可证](../LICENSE)。其他已有语言 README 尚未同步本分支的部署变化，仍主要描述上游版本。
 
 ## 🧰 MCP (模型上下文协议) 支持
 

@@ -23,6 +23,7 @@ type AppConfig struct {
 	File string `yaml:"-"` // config file path, not serialized
 	// 配置文件路径, 不序列化
 
+	Web              config.WebConfig              `yaml:"web"`
 	Server           config.ServerConfig           `yaml:"server"`
 	App              config.AppSettings            `yaml:"app"`
 	Security         config.SecurityConfig         `yaml:"security"`
@@ -77,6 +78,9 @@ func LoadConfig(f string) (*AppConfig, string, error) {
 	// defaults.Set 只有在字段为该类型的零值时才会填充
 	if err := defaults.Set(c); err != nil {
 		return nil, realpath, errors.Wrap(err, "re-set default config failed")
+	}
+	if err := c.Web.Frontend.ApplyEnv(); err != nil {
+		return nil, realpath, errors.Wrap(err, "validate frontend config failed")
 	}
 	c.OAuth.Normalize()
 	if err := c.OAuth.Validate(); err != nil {

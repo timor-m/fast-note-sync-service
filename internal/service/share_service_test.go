@@ -3,11 +3,30 @@
 package service
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/haierkeys/fast-note-sync-service/internal/domain"
+	domainmocks "github.com/haierkeys/fast-note-sync-service/internal/domain/mocks"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"go.uber.org/zap"
 )
+
+func TestShareStatsRetryKeepsConcurrentViews(t *testing.T) {
+	repo := new(domainmocks.MockUserShareRepository)
+	s := &shareService{repo: repo, logger: zap.NewNop(), statsBuffer: make(map[int64]*aggStats)}
+	s.RecordView(7, 9)
+	s.RecordView(7, 9)
+	repo.On("UpdateViewStats", mock.Anything, int64(7), int64(9), int64(2), mock.Anything).
+		Run(func(_ mock.Arguments) { s.RecordView(7, 9) }).Return(errors.New("temporary database error")).Once()
+	s.flush()
+	assert.Equal(t, int64(3), s.statsBuffer[9].viewCount)
+	repo.On("UpdateViewStats", mock.Anything, int64(7), int64(9), int64(3), mock.Anything).Return(nil).Once()
+	s.flush()
+	assert.Empty(t, s.statsBuffer)
+	repo.AssertExpectations(t)
+}
 
 // TestExtractSharedNoteFileRefs verifies that all image/file refs in markdown content are extracted.
 // TestExtractSharedNoteFileRefs 验证 markdown 内容中所有图片/文件引用都被正确提取。

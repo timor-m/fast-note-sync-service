@@ -112,3 +112,7 @@ CLAUDE.md
 # env
 .env
 fast-note-sync-service
+
+/docker/.env
+/docker/.env.nuxt
+/config/.web-session-key

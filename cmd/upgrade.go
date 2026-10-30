@@ -66,7 +66,7 @@ It is safe to run this command multiple times - already applied migrations will 
 		if err := upgrade.Execute(
 			db,
 			lg,
-			internalApp.Version,
+			internalApp.DatabaseMigrationVersion,
 			&appConfig.Database,
 			&appConfig.UserDatabase,
 		); err != nil {

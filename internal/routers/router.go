@@ -96,6 +96,8 @@ func NewRouter(frontendFiles embed.FS, appContainer *app.App, uni *ut.UniversalT
 		r.Use(middleware.CustomHeaders(cfg.Server.CustomResponseHeaders))
 	}
 
+	r.Use(frontendProxy(cfg.Web.Frontend, cfg.Server.TrustedProxies...))
+
 	// Register Static routes
 	// 注册静态资源路由
 	// If independent ports are configured, the main port only provides necessary static files (for API/compatibility)

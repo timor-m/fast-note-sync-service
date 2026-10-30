@@ -31,26 +31,17 @@ type CheckVersionInfo struct {
 	VersionNewLink                   string              `json:"versionNewLink"`
 	VersionNewChangelog              string              `json:"versionNewChangelog"`
 	VersionNewChangelogContent       string              `json:"versionNewChangelogContent"`
-	VersionHistory                   []HistoricalVersion `json:"versionHistory"`                   // Service version history between current and latest // 服务端在当前版本和最新版本之间的历史版本
+	VersionHistory                   []HistoricalVersion `json:"versionHistory"` // Service version history between current and latest // 服务端在当前版本和最新版本之间的历史版本
 	PluginVersionIsNew               bool                `json:"pluginVersionIsNew"`
 	PluginVersionNewName             string              `json:"pluginVersionNewName"`
 	PluginVersionNewLink             string              `json:"pluginVersionNewLink"`
 	PluginVersionNewChangelog        string              `json:"pluginVersionNewChangelog"`
 	PluginVersionNewChangelogContent string              `json:"pluginVersionNewChangelogContent"`
-	PluginVersionHistory             []HistoricalVersion `json:"pluginVersionHistory"`             // Plugin version history between current and latest // 插件在当前版本和最新版本之间的历史版本
+	PluginVersionHistory             []HistoricalVersion `json:"pluginVersionHistory"` // Plugin version history between current and latest // 插件在当前版本和最新版本之间的历史版本
 	SyncUpChunkNum                   int                 `json:"syncUpChunkNum"`
 	SyncDownChunkNum                 int                 `json:"syncDownChunkNum"`
 	PipelineWindowUp                 int                 `json:"pipelineWindowUp"`   // Negotiated upload pipeline window; 0 = stop-and-wait // 上行流水线窗口协商值；0 = stop-and-wait
 	PipelineWindowDown               int                 `json:"pipelineWindowDown"` // Negotiated download pipeline window; 0 = stop-and-wait // 下行流水线窗口协商值；0 = stop-and-wait
-}
-
-type SupportRecord struct {
-	Time    string `json:"time"`
-	Item    string `json:"item"`
-	Amount  string `json:"amount"`
-	Unit    string `json:"unit"`
-	Message string `json:"message"`
-	Name    string `json:"name"`
 }
 
 type Response struct {
@@ -211,4 +202,3 @@ func IsWebGUIClient(clientType string) bool {
 func IsWebGUI(c *gin.Context) bool {
 	return IsWebGUIClient(GetClientType(c))
 }
-

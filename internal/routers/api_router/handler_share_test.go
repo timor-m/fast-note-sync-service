@@ -117,6 +117,44 @@ func TestShareHandler_NoteGet_Success(t *testing.T) {
 	mockSvc.AssertExpectations(t)
 }
 
+func TestShareHandler_ViewCountingAndPreview(t *testing.T) {
+	for _, preview := range []bool{false, true} {
+		mockSvc := new(svcmocks.MockShareService)
+		note := &dto.NoteDTO{ID: 1, Path: "folder/分享.md", Content: "---\nprivate: frontmatter\n---\n# 公开内容\n![img](https://example.com/secret-token)\n```\ncode\n```"}
+		mockSvc.On("GetSharedNote", mock.Anything, "token", int64(1), "").Return(note, nil).Once()
+		if !preview {
+			mockSvc.On("RecordView", int64(7), int64(9)).Return().Once()
+		}
+		c, w := newShareTestContext("GET", "/api/share/note?id=1", "", 0)
+		c.Set("share_token", "token")
+		c.Set("share_entity", &pkgapp.ShareEntity{UID: 7, SID: 9})
+		h := newTestShareHandler(mockSvc, nil)
+		if preview {
+			h.NoteMetadata(c)
+			assert.Contains(t, w.Body.String(), `"title":"分享"`)
+			assert.NotContains(t, w.Body.String(), "frontmatter")
+			assert.NotContains(t, w.Body.String(), "secret-token")
+			assert.NotContains(t, w.Body.String(), `"content"`)
+			mockSvc.AssertNotCalled(t, "RecordView", mock.Anything, mock.Anything)
+		} else {
+			h.NoteGet(c)
+		}
+		assert.Equal(t, "private, no-store", w.Header().Get("Cache-Control"))
+		mockSvc.AssertExpectations(t)
+	}
+}
+
+func TestShareHandler_FailedNoteDoesNotCount(t *testing.T) {
+	m := new(svcmocks.MockShareService)
+	m.On("GetSharedNote", mock.Anything, "token", int64(1), "").Return((*dto.NoteDTO)(nil), code.ErrorNoteNotFound).Once()
+	c, _ := newShareTestContext("GET", "/api/share/note?id=1", "", 0)
+	c.Set("share_token", "token")
+	c.Set("share_entity", &pkgapp.ShareEntity{UID: 7, SID: 9})
+	newTestShareHandler(m, nil).NoteGet(c)
+	m.AssertNotCalled(t, "RecordView", mock.Anything, mock.Anything)
+	m.AssertExpectations(t)
+}
+
 func TestShareHandler_Query_Success(t *testing.T) {
 	mockSvc := new(svcmocks.MockShareService)
 	mockTM := new(mockTokenManager)

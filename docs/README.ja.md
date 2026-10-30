@@ -88,18 +88,6 @@
 * **🗄️ マルチデータベースサポート**:
   * SQLite、MySQL、PostgreSQLなどの主要データベースをネイティブサポートし、個人からチームまでのさまざまなデプロイ要件に対応します。
 
-## ☕ スポンサーとサポート
-
-- このプラグインが便利で、開発の継続をサポートしたい場合は、以下の方法で支援をお願いします:
-
-  | Ko-fi *中国以外の地域*                                                                          |    | WeChat Pay *中国国内*                          |
-  |--------------------------------------------------------------------------------------------------|----|------------------------------------------------|
-  | [<img src="/docs/images/kofi.png" alt="BuyMeACoffee" height="150">](https://ko-fi.com/haierkeys) | or | <img src="/docs/images/wxds.png" height="150"> |
-
-  - 支援者リスト：
-    - <a href="https://github.com/haierkeys/fast-note-sync-service/blob/master/docs/Support.ja.md">Support.ja.md</a>
-    - <a href="https://cnb.cool/haierkeys/fast-note-sync-service/-/blob/master/docs/Support.ja.md">Support.ja.md (cnb.cool ミラーリポジトリ)</a>
-
 ## ⏱️ 更新履歴
 
 - ♨️ [更新履歴を表示する](/docs/CHANGELOG.ja.md)

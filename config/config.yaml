@@ -525,3 +525,12 @@ attachment-static:
     # - ".jpeg"
     # - ".gif"
     # - ".pdf"
+
+# Optional Nuxt frontend. Go remains the only public entry point.
+# Combined-container target: http://127.0.0.1:3000
+web:
+  frontend:
+    enabled: false
+    target: "http://127.0.0.1:3000"
+    timeout: "30s"
+    fallback: true

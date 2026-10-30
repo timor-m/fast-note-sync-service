@@ -152,7 +152,7 @@ func NewServer(runEnv *runFlags) (*Server, error) {
 	if err := upgrade.Execute(
 		db,
 		s.logger,
-		internalApp.Version,
+		internalApp.DatabaseMigrationVersion,
 		&appConfig.Database,
 		&appConfig.UserDatabase,
 	); err != nil {
@@ -337,8 +337,6 @@ func NewServer(runEnv *runFlags) (*Server, error) {
 			}
 		}
 	})
-
-
 
 	// Start Cloudflare tunnel if enabled
 	if appConfig.Cloudflare.Enabled && appConfig.Cloudflare.Token != "" {

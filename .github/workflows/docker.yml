@@ -1,0 +1,149 @@
+name: Docker Hub
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dockerhub-${{ github.repository }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: ${{ vars.DOCKERHUB_IMAGE || 'timorm/fast-note-sync-service' }}
+
+jobs:
+  validate:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      build_date: ${{ steps.version.outputs.build_date }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Read Go application version
+        id: version
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, re
+          from datetime import datetime, timezone
+          from pathlib import Path
+          source = Path('internal/app/version.go').read_text()
+          match = re.search(r'\bVersion\s+string\s*=\s*"([^"]+)"', source)
+          version = match.group(1) if match else ''
+          if not re.fullmatch(r'\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?', version):
+              raise SystemExit('Go Version must be a Docker-compatible semantic version')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'version={version}\n')
+              output.write(f'build_date={datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}\n')
+          PY
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Test Go backend
+        run: go test ./...
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: web
+        run: npm ci
+      - name: Typecheck, build and test Nuxt frontend
+        working-directory: web
+        run: |
+          npm run typecheck
+          npm run build
+          npm test
+
+  docker:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate Docker Hub configuration
+        shell: bash
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo 'Configure DOCKERHUB_USERNAME and DOCKERHUB_TOKEN repository secrets.' >&2
+            exit 1
+          fi
+          if [[ ! "$IMAGE_NAME" =~ ^[a-z0-9][a-z0-9_-]*/[a-z0-9][a-z0-9._-]*$ ]]; then
+            echo 'DOCKERHUB_IMAGE must be namespace/repository, without registry or tag.' >&2
+            exit 1
+          fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build local image for integration checks
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: fast-note-sync-service:local
+          build-args: |
+            VERSION=${{ needs.validate.outputs.version }}
+            BUILD_DATE=${{ needs.validate.outputs.build_date }}
+            GIT_COMMIT=${{ github.sha }}
+            SOURCE_URL=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha,scope=fns-docker
+          cache-to: type=gha,mode=max,scope=fns-docker
+          provenance: false
+      - name: Check single-container integration and recovery
+        working-directory: web
+        run: npm run smoke:docker
+      # Match the health-records preview policy: publish only the application
+      # version. Never create latest/branch aliases or a GitHub Release here.
+      - name: Publish version image to Docker Hub
+        id: publish
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate.outputs.version }}
+          build-args: |
+            VERSION=${{ needs.validate.outputs.version }}
+            BUILD_DATE=${{ needs.validate.outputs.build_date }}
+            GIT_COMMIT=${{ github.sha }}
+            SOURCE_URL=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha,scope=fns-docker
+          cache-to: type=gha,mode=max,scope=fns-docker
+          provenance: mode=max
+          sbom: true
+      - name: Summarize published image
+        env:
+          DIGEST: ${{ steps.publish.outputs.digest }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          {
+            echo '### Docker Hub image'
+            echo "- Image: $REGISTRY/$IMAGE_NAME:$VERSION"
+            echo "- Digest: $DIGEST"
+            echo "- Source: $GITHUB_SHA"
+            echo '- Platforms: linux/amd64, linux/arm64'
+            echo '- latest was not published by this workflow.'
+          } >> "$GITHUB_STEP_SUMMARY"

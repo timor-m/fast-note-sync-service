@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/haierkeys/fast-note-sync-service/internal/routers/websocket_router"
@@ -85,6 +88,18 @@ func (h *ShareHandler) Create(c *gin.Context) {
 // @Success 200 {object} pkgapp.Res{data=dto.NoteDTO} "Success"
 // @Router /api/share/note [get]
 func (h *ShareHandler) NoteGet(c *gin.Context) {
+	h.noteGet(c, false)
+}
+
+// NoteMetadata exposes only an authorized title/description, without a page view.
+// A password-protected share cannot be previewed without its password.
+func (h *ShareHandler) NoteMetadata(c *gin.Context) {
+	h.noteGet(c, true)
+}
+
+func (h *ShareHandler) noteGet(c *gin.Context, metadataOnly bool) {
+	c.Header("Cache-Control", "private, no-store")
+	c.Header("X-Robots-Tag", "noindex, nofollow")
 	response := pkgapp.NewResponse(c)
 	params := &dto.ShareResourceRequest{}
 
@@ -117,7 +132,40 @@ func (h *ShareHandler) NoteGet(c *gin.Context) {
 		return
 	}
 
+	if metadataOnly {
+		title, description := shareNoteMetadata(noteDTO)
+		response.ToResponse(code.Success.WithData(gin.H{"title": title, "description": description}))
+		return
+	}
+	if entity := pkgapp.GetShareEntity(c); entity != nil {
+		h.App.ShareService.RecordView(entity.UID, entity.SID)
+	}
 	response.ToResponse(code.Success.WithData(noteDTO))
+}
+
+var shareMetadataMarkup = regexp.MustCompile("(?s)^---\\r?\\n.*?\\r?\\n---(?:\\r?\\n|$)|```.*?```|<[^>]*>|!?(?:\\[\\[[^]]*\\]\\]|\\[[^]]*\\]\\([^)]*\\))|https?://\\S+")
+
+func shareNoteMetadata(note *dto.NoteDTO) (string, string) {
+	title := strings.TrimSuffix(filepath.Base(note.Path), filepath.Ext(note.Path))
+	titleRunes := []rune(title)
+	if len(titleRunes) > 70 {
+		title = string(titleRunes[:70])
+	}
+	text := shareMetadataMarkup.ReplaceAllString(note.Content, " ")
+	text = strings.TrimSpace(strings.Join(strings.Fields(strings.Map(func(r rune) rune {
+		if strings.ContainsRune("#*_~`>|", r) {
+			return ' '
+		}
+		return r
+	}, text)), " "))
+	runes := []rune(text)
+	if len(runes) > 160 {
+		text = string(runes[:160]) + "…"
+	}
+	if text == "" {
+		text = "通过 Fast Note Sync 查看这篇分享笔记。"
+	}
+	return title, text
 }
 
 // GetSharedContent retrieves shared file content

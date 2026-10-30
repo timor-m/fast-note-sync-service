@@ -1,0 +1,13 @@
+.git
+storage
+build
+**/node_modules
+**/.nuxt
+**/.output
+**/.sessions
+**/.server_uuid
+**/.web-session-key
+**/.env
+**/.env.*
+config/*.local.yaml
+docker/.env*

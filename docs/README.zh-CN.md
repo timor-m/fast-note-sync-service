@@ -62,6 +62,8 @@ FNS_SESSION_SECURE=false docker compose -f docker/docker-compose.yaml up -d --bu
 
 [Docker Hub 工作流](../.github/workflows/docker.yml) 在推送 `master` 时自动运行，也支持选择 `master` 手动运行。先执行 Go/Nuxt 测试、类型检查和完整镜像的单容器集成检查，再推送 `linux/amd64`、`linux/arm64` 镜像。
 
+GitHub Actions 只保留这条流水线，不再运行 Go 二进制发布、fnOS FPK 打包或 CNB 同步，也不自动创建 GitHub Release。
+
 - 仓库 Secrets：`DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`。
 - 可选仓库 Variable：`DOCKERHUB_IMAGE`，默认 `timorm/fast-note-sync-service`。
 - 标签取自 `internal/app/version.go`，当前为 `1.0.0`；只推送版本标签，不更新 `latest`。同版本重新构建会更新该标签，可使用工作流摘要中的 digest 固定某次构建。

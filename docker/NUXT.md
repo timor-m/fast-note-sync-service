@@ -46,7 +46,7 @@ docker compose --env-file docker/.env -f docker/docker-compose.yaml up -d --buil
 | Secret | `DOCKERHUB_TOKEN` | 对目标镜像仓库有写入权限的访问令牌 |
 | Variable（可选） | `DOCKERHUB_IMAGE` | `命名空间/仓库名`，默认 `timorm/fast-note-sync-service` |
 
-Secrets 必须对当前仓库可用，其他仓库的 Secrets 不会自动继承。流程不再依赖上游作者用户名、GHCR 或 CNB 凭据；原 Go Release/Alpha Release 中重复的 Docker 发布 job 已移除，其二进制发布流程未改动。
+Secrets 必须对当前仓库可用，其他仓库的 Secrets 不会自动继承。GitHub Actions 只保留 Docker Hub 流水线，移除原 Go Release、Alpha Release、fnOS FPK 打包和 CNB 同步工作流，不创建二进制发布包或 GitHub Release，也不依赖 GHCR/CNB 凭据。Go/Nuxt 测试和容器检查仅作为镜像发布前的校验步骤保留。
 
 发布前执行 Go 测试、Nuxt 测试和类型检查；从同一提交构建完整 Go + Nuxt 镜像，再使用临时数据执行现有单容器集成和故障恢复检查。全部通过后推送 `linux/amd64`、`linux/arm64`，启用 GitHub Actions 构建缓存、provenance 和 SBOM。当前不发布未经本次流程验证的 ARMv7 产物。
 

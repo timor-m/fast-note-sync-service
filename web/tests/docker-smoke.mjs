@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { mkdtemp, mkdir, writeFile, readFile, stat, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve, join } from 'node:path'
 import { createServer } from 'node:net'
@@ -40,6 +40,20 @@ const compose = (...args) =>
     env,
     maxBuffer: 1024 * 1024,
   })
+// Inspect root-owned 0600 files inside the container. Never export the key itself.
+async function sessionKeyInfo() {
+  const result = await compose('exec', '-T', '--user', '0', 'fast-note-sync-service',
+    'node', '-e', `
+      const fs = require('node:fs'), crypto = require('node:crypto');
+      const path = '/fast-note-sync/config/.web-session-key';
+      const key = fs.readFileSync(path);
+      console.log(JSON.stringify({
+        digest: crypto.createHash('sha256').update(key).digest('hex'),
+        length: key.length, mode: fs.statSync(path).mode & 0o777,
+      }));
+    `)
+  return JSON.parse(result.stdout)
+}
 const passed = []
 function pass(name) {
   passed.push(name)
@@ -220,10 +234,9 @@ try {
     new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
   )
   pass('real Nuxt login session, server-side Go token and workspace SSR')
-  const keyPath = join(dir, 'config/.web-session-key')
-  const sessionKey = await readFile(keyPath, 'utf8')
+  const sessionKey = await sessionKeyInfo()
   assert.equal(sessionKey.length, 64)
-  assert.equal((await stat(keyPath)).mode & 0o777, 0o600)
+  assert.equal(sessionKey.mode, 0o600)
   await compose('stop', '-t', '10', 'fast-note-sync-service')
   const enabledStop = JSON.parse(
     (await compose('ps', '-a', '--format', 'json')).stdout.trim(),
@@ -232,7 +245,7 @@ try {
   pass('Go and Nuxt stop cleanly together via forwarded signals')
   await compose('start', 'fast-note-sync-service')
   await ready()
-  assert.equal(await readFile(keyPath, 'utf8'), sessionKey)
+  assert.deepEqual(await sessionKeyInfo(), sessionKey)
   for (let i = 0; i < 100; i++) {
     if ((await fetch(base + '/api/frontend/health')).ok) break
     await new Promise((resolve) => setTimeout(resolve, 200))
@@ -493,7 +506,7 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 200))
   }
   assert.equal((await fetch(base + '/api/frontend/health')).status, 200)
-  assert.equal(await readFile(keyPath, 'utf8'), sessionKey)
+  assert.deepEqual(await sessionKeyInfo(), sessionKey)
   pass('Go exit terminates container and Docker restarts both processes')
 
   env.FNS_WEB_FRONTEND_ENABLED = 'false'
@@ -538,6 +551,20 @@ try {
   console.error(logs.stdout)
   process.exitCode = 1
 } finally {
-  await compose('down', '--volumes', '--remove-orphans')
-  await rm(dir, { recursive: true, force: true })
+  try {
+    await compose('down', '--volumes', '--remove-orphans')
+    // Linux bind mounts keep container UID ownership. Clean only this mkdtemp
+    // directory with container root, without changing production permissions.
+    await exec('docker', ['run', '--rm', '--network', 'none', '--user', '0:0',
+      '--entrypoint', 'node', '--mount', `type=bind,source=${dir},target=/smoke`,
+      env.FNS_IMAGE, '-e', `
+        const fs = require('node:fs');
+        for (const name of fs.readdirSync('/smoke'))
+          fs.rmSync('/smoke/' + name, { recursive: true, force: true });
+      `])
+    await rm(dir, { recursive: true, force: true })
+  } catch (error) {
+    console.error('Smoke cleanup failed:', error.message)
+    process.exitCode = 1
+  }
 }

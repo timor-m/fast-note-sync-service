@@ -48,9 +48,11 @@ docker compose --env-file docker/.env -f docker/docker-compose.yaml up -d --buil
 
 Secrets 必须对当前仓库可用，其他仓库的 Secrets 不会自动继承。GitHub Actions 只保留 Docker Hub 流水线，移除原 Go Release、Alpha Release、fnOS FPK 打包和 CNB 同步工作流，不创建二进制发布包或 GitHub Release，也不依赖 GHCR/CNB 凭据。Go/Nuxt 测试和容器检查仅作为镜像发布前的校验步骤保留。
 
-发布前执行 Go 测试、Nuxt 测试和类型检查；从同一提交构建完整 Go + Nuxt 镜像，再使用临时数据执行现有单容器集成和故障恢复检查。全部通过后推送 `linux/amd64`、`linux/arm64`，启用 GitHub Actions 构建缓存、provenance 和 SBOM。当前不发布未经本次流程验证的 ARMv7 产物。
+`amd64`、`arm64` 使用两个 runner 并行构建，各自执行临时数据集成与故障恢复检查。Go 与 Nuxt 构建阶段由 BuildKit 并行调度：Go 在宿主架构上交叉编译，Nuxt 在宿主架构上生成可跨架构使用的纯 JS 产物；若输出出现原生库，构建会失败。QEMU 保留，用于 arm64 最终镜像安装依赖和运行检查，不用于 Go/Nuxt 编译。
 
-标签读取 `internal/app/version.go` 的 Go 应用版本（当前为 `1.0.0`），不取前台脚手架版本；只发布版本标签，不更新 `latest`、分支别名或创建 Git tag/Release。相同版本再次推送 master 会更新该版本镜像；需要固定某次构建时使用 Actions 摘要中的 digest。不同发布任务串行执行。
+Go 测试、Nuxt 类型检查与测试合并进 Docker 构建缓存层，移除宿主机重复的 npm 安装和 Nuxt 构建。两种架构分别保存 Actions 缓存；Go 只复制相关源码，前台改动不会使 Go 缓存失效；版本标签写在系统依赖安装之后，提交号和构建时间变化不会触发重新安装系统依赖。每个 runner 仅编译一次，检查通过后再次调用 Buildx 复用本地缓存层、按 digest 上传镜像，不再编译，也不重复上传构建缓存；两边全部成功后才合并发布版本标签。只上传 digest 文件用于合并，不生成 Go 二进制发布包、GitHub Release、SBOM 或 provenance 附件。当前不构建 ARMv7。
+
+标签读取 `internal/app/version.go` 的 Go 应用版本（当前为 `1.0.0`），不取前台脚手架版本；只发布版本标签，不更新 `latest`、分支别名或创建 Git tag/Release。相同版本再次推送 master 会更新该版本镜像；需要固定某次构建时使用 Actions 摘要中的 digest。新的 master 推送会取消尚未完成的旧流水线；单次流水线内两种架构并行。
 
 确认对应版本已在 Actions 成功发布后，服务器可执行：
 

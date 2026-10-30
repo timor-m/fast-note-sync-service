@@ -10,20 +10,23 @@ permissions:
 
 concurrency:
   group: dockerhub-${{ github.repository }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   REGISTRY: docker.io
   IMAGE_NAME: ${{ vars.DOCKERHUB_IMAGE || 'timorm/fast-note-sync-service' }}
 
 jobs:
-  validate:
+  docker:
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
     outputs:
       version: ${{ steps.version.outputs.version }}
-      build_date: ${{ steps.version.outputs.build_date }}
     steps:
       - uses: actions/checkout@v6
       - name: Read Go application version
@@ -43,32 +46,6 @@ jobs:
               output.write(f'version={version}\n')
               output.write(f'build_date={datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}\n')
           PY
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-      - name: Test Go backend
-        run: go test ./...
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - name: Install frontend dependencies
-        working-directory: web
-        run: npm ci
-      - name: Typecheck, build and test Nuxt frontend
-        working-directory: web
-        run: |
-          npm run typecheck
-          npm run build
-          npm test
-
-  docker:
-    needs: validate
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v6
       - name: Validate Docker Hub configuration
         shell: bash
         env:
@@ -87,6 +64,8 @@ jobs:
         with:
           node-version: 22
       - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
       - uses: docker/setup-buildx-action@v3
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
@@ -99,51 +78,87 @@ jobs:
         with:
           context: .
           file: docker/Dockerfile
-          platforms: linux/amd64
+          platforms: linux/${{ matrix.arch }}
           load: true
           push: false
           tags: fast-note-sync-service:local
           build-args: |
-            VERSION=${{ needs.validate.outputs.version }}
-            BUILD_DATE=${{ needs.validate.outputs.build_date }}
+            VERSION=${{ steps.version.outputs.version }}
+            BUILD_DATE=${{ steps.version.outputs.build_date }}
             GIT_COMMIT=${{ github.sha }}
             SOURCE_URL=${{ github.server_url }}/${{ github.repository }}
-          cache-from: type=gha,scope=fns-docker
-          cache-to: type=gha,mode=max,scope=fns-docker
+          cache-from: type=gha,scope=fns-docker-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=fns-docker-${{ matrix.arch }}
           provenance: false
       - name: Check single-container integration and recovery
         working-directory: web
         run: npm run smoke:docker
-      # Match the health-records preview policy: publish only the application
-      # version. Never create latest/branch aliases or a GitHub Release here.
-      - name: Publish version image to Docker Hub
+      # All build layers already exist locally. This exports them by digest,
+      # without recompilation or publishing a version tag before both jobs pass.
+      - name: Export tested image layers to Docker Hub
         id: publish
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate.outputs.version }}
+          platforms: linux/${{ matrix.arch }}
           build-args: |
-            VERSION=${{ needs.validate.outputs.version }}
-            BUILD_DATE=${{ needs.validate.outputs.build_date }}
+            VERSION=${{ steps.version.outputs.version }}
+            BUILD_DATE=${{ steps.version.outputs.build_date }}
             GIT_COMMIT=${{ github.sha }}
             SOURCE_URL=${{ github.server_url }}/${{ github.repository }}
-          cache-from: type=gha,scope=fns-docker
-          cache-to: type=gha,mode=max,scope=fns-docker
-          provenance: mode=max
-          sbom: true
-      - name: Summarize published image
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          provenance: false
+      - name: Record image digest
         env:
           DIGEST: ${{ steps.publish.outputs.digest }}
-          VERSION: ${{ needs.validate.outputs.version }}
         run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          retention-days: 1
+
+  publish:
+    needs: docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: digest-*
+          path: ${{ runner.temp }}/digests
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Publish the combined version manifest
+        env:
+          VERSION: ${{ needs.docker.outputs.version }}
+        shell: bash
+        run: |
+          IMAGE="$REGISTRY/$IMAGE_NAME"
+          references=()
+          for digest in "$RUNNER_TEMP"/digests/*; do
+            references+=("$IMAGE@sha256:$(basename "$digest")")
+          done
+          test "${#references[@]}" -eq 2
+          docker buildx imagetools create --tag "$IMAGE:$VERSION" "${references[@]}"
+          docker buildx imagetools inspect "$IMAGE:$VERSION" | tee "$RUNNER_TEMP/manifest.txt"
+          grep -q 'linux/amd64' "$RUNNER_TEMP/manifest.txt"
+          grep -q 'linux/arm64' "$RUNNER_TEMP/manifest.txt"
           {
             echo '### Docker Hub image'
-            echo "- Image: $REGISTRY/$IMAGE_NAME:$VERSION"
-            echo "- Digest: $DIGEST"
+            echo "- Image: $IMAGE:$VERSION"
             echo "- Source: $GITHUB_SHA"
-            echo '- Platforms: linux/amd64, linux/arm64'
+            echo '- Platforms: linux/amd64, linux/arm64 (parallel build and integration checks)'
             echo '- latest was not published by this workflow.'
+            echo '```'
+            cat "$RUNNER_TEMP/manifest.txt"
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

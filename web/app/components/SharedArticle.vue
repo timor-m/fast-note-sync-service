@@ -135,20 +135,6 @@ watch(() => [props.content, props.token, props.password], async (_, __, onCleanu
     }
   }))
 }, { immediate: true })
-function syncTableScrolling() {
-  for (const table of article.value?.element?.querySelectorAll<HTMLElement>('.table-scroll') || []) {
-    const overflowing = table.scrollWidth > table.clientWidth + 1
-    if (overflowing) {
-      table.tabIndex = 0
-      table.setAttribute('role', 'region')
-      table.setAttribute('aria-label', '表格，可横向滚动')
-    } else {
-      table.removeAttribute('tabindex')
-      table.removeAttribute('role')
-      table.removeAttribute('aria-label')
-    }
-  }
-}
 function updateActive() {
   frame = 0
   const headings = article.value?.element?.querySelectorAll<HTMLElement>('h1[id],h2[id],h3[id]')
@@ -191,7 +177,6 @@ async function onArticleClick(event: MouseEvent) {
 }
 onMounted(async () => {
   window.addEventListener('scroll', onScroll, { passive: true })
-  window.addEventListener('resize', syncTableScrolling)
   document.addEventListener('click', closeMenus)
   document.addEventListener('keydown', closeMenus)
   diagramTheme = matchMedia('(prefers-color-scheme: dark)')
@@ -201,13 +186,11 @@ onMounted(async () => {
   touchQuery.addEventListener('change', onTouchMode)
   await nextTick()
   updateActive()
-  syncTableScrolling()
   if (article.value?.element && !article.value.element.querySelector('.voice-message')) cleanupAudio = enhanceShareAudio(article.value.element)
   void renderDiagrams()
   const anchor = resolveArticleAnchor(rendered.value.headings, location.hash)
   if (anchor) jump(anchor)
 })
-watch(() => [preferences.value.wide, preferences.value.contents], () => nextTick(syncTableScrolling))
 watch(activeHeading, () => nextTick(() => {
   const link = document.querySelector<HTMLElement>('.article-contents a.active')
   const nav = link?.parentElement
@@ -221,7 +204,7 @@ watch(() => rendered.value.html, () => {
   cleanupAudio = undefined
   void nextTick(() => {
     if (disposed) return
-    updateActive(); syncTableScrolling(); void renderDiagrams()
+    updateActive(); void renderDiagrams()
     if (article.value?.element && !article.value.element.querySelector('.voice-message')) cleanupAudio = enhanceShareAudio(article.value.element)
   })
 })
@@ -235,7 +218,6 @@ onBeforeUnmount(() => {
   touchQuery?.removeEventListener('change', onTouchMode)
   if (contentsDialog.value?.open) { contentsDialog.value.close(); afterContentsClose() }
   window.removeEventListener('scroll', onScroll)
-  window.removeEventListener('resize', syncTableScrolling)
   document.removeEventListener('click', closeMenus)
   document.removeEventListener('keydown', closeMenus)
   cancelAnimationFrame(frame)

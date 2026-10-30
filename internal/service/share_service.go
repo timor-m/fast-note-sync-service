@@ -358,6 +358,7 @@ func (s *shareService) VerifyShare(ctx context.Context, token string, rid string
 	}
 
 	entity.Resources = share.Resources
+	entity.ViewCount = share.ViewCount
 
 	ids, ok := share.Resources[rtp]
 	if !ok {

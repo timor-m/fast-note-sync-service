@@ -108,3 +108,9 @@ type ShareListItem struct {
 type ShareListResponse struct {
 	Items []*ShareListItem `json:"items"` // Share list // 分享列表
 }
+
+// ShareNoteResponse adds persisted share statistics without changing private note responses.
+type ShareNoteResponse struct {
+	*NoteDTO
+	ViewCount *int64 `json:"viewCount,omitempty"`
+}

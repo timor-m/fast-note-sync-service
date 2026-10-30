@@ -195,9 +195,22 @@ func registerOAuthAuthorizePageRoutes(r *gin.Engine, frontendFiles embed.FS, app
 func registerShareRoutes(r *gin.Engine, frontendFiles embed.FS, appContainer *app.App) {
 	cfg := appContainer.Config()
 	frontendShareContent, _ := frontendFiles.ReadFile("frontend/share.html")
+	proxy := frontendReverseProxy(cfg.Web.Frontend)
 	apiUrl := cfg.Server.ExtApiUrl
 
 	r.GET("/share/:side/:token", func(c *gin.Context) {
+		// Keep the link contract used by the admin and Obsidian plugin. Only
+		// note pages change renderer; authorization and PV stay in the share API.
+		if cfg.Web.Frontend.Enabled {
+			entity, err := appContainer.TokenManager.ShareParse(c.Param("token"))
+			if err == nil {
+				share, err := appContainer.ShareRepo.GetByID(c.Request.Context(), entity.UID, entity.SID)
+				if err == nil && share != nil && share.ResType == "note" && strconv.FormatInt(share.ResID, 10) == c.Param("side") {
+					proxy(c)
+					return
+				}
+			}
+		}
 		renderHTMLWithAPI(c, frontendShareContent, apiUrl)
 	})
 }

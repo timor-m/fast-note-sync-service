@@ -15,6 +15,9 @@ services:
       FNS_WEB_FRONTEND_TIMEOUT: "${FNS_WEB_FRONTEND_TIMEOUT:-30s}"
       FNS_WEB_FRONTEND_FALLBACK: "${FNS_WEB_FRONTEND_FALLBACK:-true}"
       FNS_SESSION_PASSWORD: "${FNS_SESSION_PASSWORD:-}"
+      # Empty values preserve the existing mounted YAML proxy settings.
+      FNS_ESA_REAL_IP: "${FNS_ESA_REAL_IP:-}"
+      FNS_TRUSTED_PROXIES: "${FNS_TRUSTED_PROXIES:-}"
       FNS_SESSION_SECURE: "${FNS_SESSION_SECURE:-true}"
     volumes:
       - ${FNS_DATA_DIR:-/data/fast-note-sync}/storage:/fast-note-sync/storage

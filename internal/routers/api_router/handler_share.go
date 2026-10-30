@@ -137,10 +137,12 @@ func (h *ShareHandler) noteGet(c *gin.Context, metadataOnly bool) {
 		response.ToResponse(code.Success.WithData(gin.H{"title": title, "description": description}))
 		return
 	}
+	result := &dto.ShareNoteResponse{NoteDTO: noteDTO}
 	if entity := pkgapp.GetShareEntity(c); entity != nil {
 		h.App.ShareService.RecordView(entity.UID, entity.SID)
+		result.ViewCount = &entity.ViewCount
 	}
-	response.ToResponse(code.Success.WithData(noteDTO))
+	response.ToResponse(code.Success.WithData(result))
 }
 
 var shareMetadataMarkup = regexp.MustCompile("(?s)^---\\r?\\n.*?\\r?\\n---(?:\\r?\\n|$)|```.*?```|<[^>]*>|!?(?:\\[\\[[^]]*\\]\\]|\\[[^]]*\\]\\([^)]*\\))|https?://\\S+")

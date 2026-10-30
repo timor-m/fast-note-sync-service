@@ -1,5 +1,13 @@
 package config
 
+import (
+	"fmt"
+	"net"
+	"os"
+	"strconv"
+	"strings"
+)
+
 // ServerConfig server configuration
 // ServerConfig 服务器配置
 type ServerConfig struct {
@@ -29,6 +37,7 @@ type ServerConfig struct {
 	// ExtApiUrl 外部访问 API 的地址
 	ExtApiUrl          string   `yaml:"ext-api-url"`
 	CORSAllowedOrigins []string `yaml:"cors-allowed-origins"` // CORSAllowedOrigins allowed origins for CORS / CORSAllowedOrigins 跨域允许源白名单
+	ESARealIP          bool     `yaml:"esa-real-ip"`          // Trust ali-real-client-ip only from configured proxies.
 	TrustedProxies     []string `yaml:"trusted-proxies"`      // TrustedProxies trusted proxies IP/CIDR list / TrustedProxies 可信代理 IP/CIDR 列表
 
 	// ShareBaseUrl external share page base URL
@@ -43,4 +52,35 @@ type ServerConfig struct {
 	// CustomResponseHeaders custom response headers for all requests
 	// CustomResponseHeaders 所有请求的自定义响应头
 	CustomResponseHeaders map[string]string `yaml:"custom-response-headers"` // Custom response headers mapped to string
+}
+
+// ApplyProxyEnv preserves mounted YAML unless an explicit nonempty override is supplied.
+func (c *ServerConfig) ApplyProxyEnv() error {
+	if value := strings.TrimSpace(os.Getenv("FNS_ESA_REAL_IP")); value != "" {
+		enabled, err := strconv.ParseBool(value)
+		if err != nil {
+			return fmt.Errorf("FNS_ESA_REAL_IP must be a boolean")
+		}
+		c.ESARealIP = enabled
+	}
+	if value := strings.TrimSpace(os.Getenv("FNS_TRUSTED_PROXIES")); value != "" {
+		c.TrustedProxies = strings.FieldsFunc(value, func(r rune) bool { return r == ',' || r == ';' || r == ' ' || r == '\n' || r == '\t' || r == '\r' })
+	}
+	if c.ESARealIP && len(c.TrustedProxies) == 0 {
+		return fmt.Errorf("server.esa-real-ip requires explicit trusted-proxies containing the ESA origin IPs/CIDRs")
+	}
+	for _, proxy := range c.TrustedProxies {
+		if net.ParseIP(proxy) != nil {
+			continue
+		}
+		_, network, err := net.ParseCIDR(proxy)
+		if err != nil {
+			return fmt.Errorf("invalid server.trusted-proxies entry: %s", proxy)
+		}
+		ones, _ := network.Mask.Size()
+		if c.ESARealIP && ones == 0 {
+			return fmt.Errorf("ESA real IP must not trust all IPv4 or IPv6 sources")
+		}
+	}
+	return nil
 }

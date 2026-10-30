@@ -1,5 +1,5 @@
 import { ofetch } from 'ofetch'
-import { createError, type H3Event } from 'h3'
+import { createError, setResponseHeader, type H3Event } from 'h3'
 import type { FnsResponse } from '~~/shared/types/fns'
 
 interface Options {
@@ -20,6 +20,9 @@ export async function fnsRequest<T>(
     'User-Agent': 'FastNoteSyncWeb/1.0',
     'Accept-Language': 'zh-CN',
   }
+  // Shared by browser BFF calls and SSR subrequests; captured at the boundary.
+  if (event.context.fnsClientIP)
+    headers['X-Forwarded-For'] = event.context.fnsClientIP
   if (options.token) headers.Authorization = `Bearer ${options.token}`
   if (options.shareToken) headers['Share-Token'] = options.shareToken
   let response
@@ -89,6 +92,7 @@ export async function fnsRequest<T>(
       throw createError({ statusCode: 401, message: '登录已过期，请重新登录' })
     }
     const messages: Record<number, string> = {
+      303: '登录尝试过多，请稍后重试',
       401: '登录失败，请检查账号或密码',
       402: '登录失败，请检查账号或密码',
       403: '登录失败，请检查账号或密码',
@@ -98,8 +102,12 @@ export async function fnsRequest<T>(
       483: '请输入分享密码',
       484: '分享密码不正确',
     }
+    const throttled = response.status === 429 || code === 303
+    const retryAfter = response.headers.get('retry-after')
+    if (throttled && retryAfter && /^\d+$/.test(retryAfter))
+      setResponseHeader(event, 'Retry-After', Number(retryAfter))
     throw createError({
-      statusCode: response.status === 429 || code === 303 ? 429 : 400,
+      statusCode: throttled ? 429 : 400,
       message: messages[code || 0] || '笔记服务请求失败，请稍后重试',
       data: { code },
     })

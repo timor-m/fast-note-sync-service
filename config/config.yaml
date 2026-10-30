@@ -53,6 +53,9 @@ server:
   # 1. Leave empty ([]): Only loopback addresses (127.0.0.1 and ::1) are trusted. Keep it empty if Nginx/Cloudflare Tunnel is on the same machine.
   # 2. Remote Deployment: If your reverse proxy is on a separate server, you must add its IP or CIDR block to this list.
   trusted-proxies: []
+  # ESA 直连回源：启用后仅接受上述可信来源注入的 ali-real-client-ip。
+  # 请填 ESA 控制台“源站防护”的回源网段，不是 NAS 的地址；禁止全网可信。
+  esa-real-ip: false
 
 
   # 所有请求的自定义 HTTP 响应头

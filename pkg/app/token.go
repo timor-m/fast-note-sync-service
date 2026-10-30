@@ -82,6 +82,7 @@ type UserEntity struct {
 
 // ShareEntity resource sharing Claims // ShareEntity 资源分享 Claims
 type ShareEntity struct {
+	ViewCount int64               `json:"-"`         // Persisted statistics loaded after share authorization, never stored in tokens.
 	SID       int64               `json:"sid"`       // Share record ID in database // 数据库中的分享记录 ID (Share ID)
 	UID       int64               `json:"uid"`       // User ID in database // 数据库中的用户 ID (User ID)
 	Resources map[string][]string `json:"resources"` // Resource list // 资源列表

@@ -191,3 +191,25 @@ func TestUserHandler_ChangePassword_NoUID(t *testing.T) {
 	assertResponseCode(t, w, code.ErrorNotUserAuthToken.Code())
 	mockSvc.AssertExpectations(t)
 }
+
+func TestUserHandlerLoginLimitSharedAcrossClients(t *testing.T) {
+	mockSvc := new(svcmocks.MockUserService)
+	mockSvc.On("Login", mock.Anything, mock.AnythingOfType("*dto.UserLoginRequest"), mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, code.ErrorUserLoginPasswordFailed).Times(5)
+	handler := newUserHandler(mockSvc)
+	for i := 0; i < 6; i++ {
+		c, w := newUserTestContext("POST", "/api/user/login", `{"credentials":"limited","password":"wrong"}`, 0)
+		// Original WebGUI and Nuxt both identify themselves as webgui.
+		c.Request.Header.Set("x-client", "webgui")
+		c.Request.Header.Set("User-Agent", []string{"OriginalWebGUI", "FastNoteSyncWeb/1.0"}[i%2])
+		handler.Login(c)
+		if i < 5 {
+			assertResponseCode(t, w, code.ErrorUserLoginPasswordFailed.Code())
+		} else {
+			assert.Equal(t, http.StatusTooManyRequests, w.Code)
+			assert.Equal(t, "900", w.Header().Get("Retry-After"))
+			assertResponseCode(t, w, code.ErrorTooManyRequests.Code())
+		}
+	}
+	mockSvc.AssertExpectations(t)
+}

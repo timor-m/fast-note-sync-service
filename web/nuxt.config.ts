@@ -2,7 +2,7 @@ export default defineNuxtConfig({
   compatibilityDate: '2026-10-30',
   modules: ['@nuxt/ui', '@pinia/nuxt'],
   ui: { fonts: false },
-  css: ['~/assets/css/main.css'],
+  css: ['~/assets/css/main.css', '~/assets/css/share.css', 'katex/dist/katex.min.css'],
   devtools: { enabled: false },
   app: {
     head: {
@@ -33,6 +33,13 @@ export default defineNuxtConfig({
     '/app': { headers: { 'cache-control': 'private, no-store' } },
     '/app/**': { headers: { 'cache-control': 'private, no-store' } },
     '/s/**': {
+      headers: {
+        'cache-control': 'private, no-store',
+        'referrer-policy': 'no-referrer',
+        'x-robots-tag': 'noindex, nofollow',
+      },
+    },
+    '/share/**': {
       headers: {
         'cache-control': 'private, no-store',
         'referrer-policy': 'no-referrer',

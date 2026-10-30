@@ -27,7 +27,7 @@ await new Promise((resolve) => reserve.close(resolve))
 const base = `http://127.0.0.1:${port}`
 const env = {
   ...process.env,
-  FNS_IMAGE: 'fast-note-sync-service:local',
+  FNS_IMAGE: process.env.FNS_SMOKE_IMAGE || 'fast-note-sync-service:local',
   FNS_DATA_DIR: dir,
   FNS_PUBLIC_PORT: String(port),
   FNS_SESSION_PASSWORD: '',
@@ -101,7 +101,7 @@ try {
   await mkdir(join(dir, 'storage'))
   await writeFile(
     join(dir, 'config/config.yaml'),
-    `user:\n  register-is-enable: true\nserver:\n  http-port: ':9000'\nsecurity:\n  auth-token-key: '${randomBytes(24).toString('hex')}'\n  share-token-key: '${randomBytes(24).toString('hex')}'\nstorage:\n  local-fs:\n    is-enable: true\n`,
+    `user:\n  register-is-enable: true\nserver:\n  http-port: ':9000'\n  trusted-proxies: ['0.0.0.0/0', '::/0']\nsecurity:\n  auth-token-key: '${randomBytes(24).toString('hex')}'\n  share-token-key: '${randomBytes(24).toString('hex')}'\nstorage:\n  local-fs:\n    is-enable: true\n`,
   )
   await compose('up', '-d', '--no-build')
   const running = JSON.parse(
@@ -110,9 +110,9 @@ try {
   assert.equal(Array.isArray(running) ? running.length : 1, 1)
   pass('one Compose service and one running container')
   await ready()
-  assert.equal((await api('/api/version')).version, '1.0.1')
+  assert.equal((await api('/api/version')).version, '1.0.2')
   assert.equal((await readFile(join(dir, 'config/lastVersion'), 'utf8')).trim(), '3.6.1')
-  pass('fork version is 1.0.1 while database migration compatibility remains 3.6.1')
+  pass('fork version is 1.0.2 while database migration compatibility remains 3.6.1')
   for (let i = 0; i < 100; i++) {
     if ((await fetch(base + '/api/frontend/health')).ok) break
     await new Promise((resolve) => setTimeout(resolve, 200))
@@ -275,6 +275,12 @@ try {
   })
   assert.ok(share.token)
   assert.ok(share.id)
+  const oldNoteURL = `${base}/share/${share.id}/${share.token}`
+  const legacyNotePage = await fetch(oldNoteURL, { redirect: 'manual' })
+  assert.equal(legacyNotePage.status, 200)
+  assert.equal(legacyNotePage.headers.get('location'), null)
+  assert.equal(legacyNotePage.headers.get('x-robots-tag'), 'noindex, nofollow')
+  assert.match(await legacyNotePage.text(), /这份内容已加锁/)
   const shared = await post('/api/frontend/shares/note', {
     token: share.token,
     id: share.id,
@@ -295,6 +301,9 @@ try {
     pathHash: hash('pixel.png'),
     password: 'sharepass',
   })
+  const oldFilePage = await fetch(`${base}/share/${fileShare.id}/${fileShare.token}`, { redirect: 'manual' })
+  assert.equal(oldFilePage.status, 200)
+  assert.equal(oldFilePage.headers.get('location'), null)
   const sharedFile = await post('/api/frontend/shares/file', {
     token: fileShare.token,
     id: fileShare.id,
@@ -303,7 +312,7 @@ try {
   assert.equal(sharedFile.status, 200)
   assert.deepEqual(Buffer.from(await sharedFile.arrayBuffer()), png)
   pass(
-    'real existing share authorization, passwords and binary attachments via Nuxt',
+    'admin and Obsidian legacy note links reach Nuxt; passwords and file shares remain compatible',
   )
   const protectedPreview = await fetch(`${base}/s/${share.token}?id=${share.id}`)
   assert.equal(protectedPreview.headers.get('x-robots-tag'), 'noindex, nofollow')
@@ -313,8 +322,11 @@ try {
   })
   const publicPreview = await fetch(`${base}/s/${publicShare.token}?id=${publicShare.id}`)
   const publicPreviewHtml = await publicPreview.text()
-  assert.match(publicPreviewHtml, /<title>Smoke · Fast Note Sync<\/title>/)
+  assert.match(publicPreviewHtml, /<title>Smoke<\/title>/)
   assert.match(publicPreviewHtml, /property="og:description"/)
+  const oldPublicPage = await fetch(`${base}/share/${publicShare.id}/${publicShare.token}`, { redirect: 'manual' })
+  assert.equal(oldPublicPage.status, 200)
+  assert.match(await oldPublicPage.text(), /<title>Smoke<\/title>/)
   const publicRead = await post('/api/frontend/shares/note', {
     token: publicShare.token, id: publicShare.id,
   })
@@ -325,14 +337,14 @@ try {
   await ready()
   const shares = await api('/api/shares?page=1&pageSize=50')
   const publicStats = shares.list.find((item) => item.notePath === path && item.status === 1)
-  assert.equal(publicStats?.viewCount, 1, JSON.stringify(shares))
+  assert.equal(publicStats?.viewCount, 3, JSON.stringify(shares))
   const fileStats = shares.list.find((item) => item.title === 'pixel.png')
   assert.equal(fileStats?.viewCount, 0)
   for (let i = 0; i < 100; i++) {
     if ((await fetch(base + '/api/frontend/health')).ok) break
     await new Promise((resolve) => setTimeout(resolve, 200))
   }
-  pass('SSR share metadata is private and does not count; successful note view persists exactly once')
+  pass('share metadata stays private; two SSR reads plus one API read persist three views')
   for (const endpoint of ['/api/mcp', '/api/mcp/sse']) {
     const res = await fetch(base + endpoint)
     const body = await res.text()

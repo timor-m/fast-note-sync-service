@@ -25,9 +25,9 @@ type UserUpdateRequest struct {
 // UserLoginRequest User login request parameters
 // 用户登录请求参数
 type UserLoginRequest struct {
-	Credentials string `json:"credentials" form:"credentials" binding:"required" example:"user@example.com"` // Username or Email // 登录凭证（用户名或邮件）
-	Password    string `json:"password" form:"password" binding:"required" example:"password123"`            // Password // 密码
-	TokenID     int64  `json:"tokenId" form:"tokenId" example:"123"`                                         // Last token ID for rotation // 最后一个用于轮转的令牌ID
+	Credentials string `json:"credentials" form:"credentials" binding:"required,max=254" example:"user@example.com"` // Username or Email // 登录凭证（用户名或邮件）
+	Password    string `json:"password" form:"password" binding:"required,max=1024" example:"password123"`           // Password // 密码
+	TokenID     int64  `json:"tokenId" form:"tokenId" example:"123"`                                                 // Last token ID for rotation // 最后一个用于轮转的令牌ID
 }
 
 // UserRegisterSendEmailRequest Request parameters for sending registration email

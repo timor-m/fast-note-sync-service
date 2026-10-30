@@ -3,7 +3,6 @@ package routers
 import (
 	"context"
 	"errors"
-	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -27,7 +26,19 @@ func frontendPath(path string) bool {
 	return strings.HasPrefix(path, "/_nuxt/") || strings.HasPrefix(path, "/api/frontend/")
 }
 
-func frontendProxy(cfg config.FrontendConfig, trustedProxies ...string) gin.HandlerFunc {
+func frontendProxy(cfg config.FrontendConfig) gin.HandlerFunc {
+	proxy := frontendReverseProxy(cfg)
+	return func(c *gin.Context) {
+		if frontendPath(c.Request.URL.Path) {
+			proxy(c)
+			return
+		}
+		c.Next()
+	}
+}
+
+// Explicit share routes use the same proxy without widening the global allowlist.
+func frontendReverseProxy(cfg config.FrontendConfig) gin.HandlerFunc {
 	if !cfg.Enabled {
 		return func(c *gin.Context) { c.Next() }
 	}
@@ -67,13 +78,12 @@ func frontendProxy(cfg config.FrontendConfig, trustedProxies ...string) gin.Hand
 		},
 	}
 	return func(c *gin.Context) {
-		if !frontendPath(c.Request.URL.Path) {
-			c.Next()
-			return
-		}
 		// Snapshot request metadata after Proxy middleware; never trust raw browser forwarding headers.
 		req := c.Request.Clone(c.Request.Context())
-		req.Header.Set("X-Forwarded-For", frontendClientIP(c.Request, trustedProxies))
+		req.Header.Set("X-Forwarded-For", c.ClientIP())
+		req.Header.Del("Ali-Real-Client-IP")
+		req.Header.Del("X-Real-IP")
+		req.Header.Del("CF-Connecting-IP")
 		if req.URL.Scheme != "https" {
 			req.URL.Scheme = "http"
 		}
@@ -82,42 +92,4 @@ func frontendProxy(cfg config.FrontendConfig, trustedProxies ...string) gin.Hand
 		proxy.ServeHTTP(c.Writer, req.WithContext(ctx))
 		c.Abort()
 	}
-}
-
-// Resolve only the forwarding chain whose immediate peer is explicitly trusted.
-// This is local to Nuxt routing and does not change existing API middleware.
-func frontendClientIP(r *http.Request, proxies []string) string {
-	if len(proxies) == 0 {
-		proxies = []string{"127.0.0.1", "::1"}
-	}
-	trusted := func(addr string) bool {
-		ip := net.ParseIP(addr)
-		if ip == nil {
-			return false
-		}
-		for _, proxy := range proxies {
-			if ip.Equal(net.ParseIP(proxy)) {
-				return true
-			}
-			if _, subnet, err := net.ParseCIDR(proxy); err == nil && subnet.Contains(ip) {
-				return true
-			}
-		}
-		return false
-	}
-	peer, _, _ := net.SplitHostPort(r.RemoteAddr)
-	if !trusted(peer) {
-		return peer
-	}
-	chain := strings.Split(r.Header.Get("X-Forwarded-For"), ",")
-	for i := len(chain) - 1; i >= 0; i-- {
-		ip := strings.TrimSpace(chain[i])
-		if net.ParseIP(ip) == nil {
-			return peer
-		}
-		if !trusted(ip) || i == 0 {
-			return ip
-		}
-	}
-	return peer
 }

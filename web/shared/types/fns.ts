@@ -19,6 +19,8 @@ export interface Note {
   path: string
   content?: string
   mtime: number
+  version?: number
+  viewCount?: number
 }
 export interface Page<T> {
   list: T[]

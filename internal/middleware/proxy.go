@@ -3,13 +3,23 @@ package middleware
 import (
 	"crypto/tls"
 	"net"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
 
 // Proxy handles proxy headers and restores original request information based on trusted proxies
 // Proxy 根据可信代理处理代理头部并恢复原始请求信息
-func Proxy(trustedProxies []string) gin.HandlerFunc {
+func ConfigureProxy(r *gin.Engine, trustedProxies []string, esaRealIP bool) {
+	// Nuxt is a private loopback proxy; other trusted sources must be explicit.
+	proxies := append([]string{"127.0.0.1", "::1"}, trustedProxies...)
+	if err := r.SetTrustedProxies(proxies); err != nil {
+		panic(err)
+	}
+	r.Use(Proxy(trustedProxies, esaRealIP))
+}
+
+func Proxy(trustedProxies []string, esaRealIP ...bool) gin.HandlerFunc {
 	// If trustedProxies is empty, default to loopback addresses only
 	// 如果 trustedProxies 为空，默认只信任本地回环地址
 	if len(trustedProxies) == 0 {
@@ -82,18 +92,24 @@ func Proxy(trustedProxies []string) gin.HandlerFunc {
 			}
 		}
 
-		// Trust CF-Connecting-IP only when the direct TCP connection originates from
-		// the loopback interface (127.0.0.1 / ::1). This is the fingerprint of a local
-		// cloudflared tunnel process — the only entity that connects from loopback and
-		// injects this header. An external attacker connecting directly to the origin
-		// cannot fake a loopback RemoteAddr at the TCP level.
-		//
-		// 仅当 TCP 直连来源为回环地址（127.0.0.1 / ::1）时，才信任 CF-Connecting-IP 头。
-		// 这是本地 cloudflared 进程的唯一特征——它是唯一从回环地址连接并注入该头的实体。
-		// 外部攻击者直连源站时，无法在 TCP 层伪造回环地址，因此此头会被忽略。
-		if cfIP := c.GetHeader("CF-Connecting-IP"); cfIP != "" {
-			if remoteHost == "127.0.0.1" || remoteHost == "::1" {
-				c.Request.RemoteAddr = cfIP + ":0"
+		if len(esaRealIP) > 0 && esaRealIP[0] && trusted {
+			// ESA adds a single IP, never a forwarding chain. Do not fall back to an
+			// attacker-controlled XFF when ESA's header is absent or invalid.
+			values := c.Request.Header.Values("ali-real-client-ip")
+			if len(values) == 1 {
+				if ip := net.ParseIP(strings.TrimSpace(values[0])); ip != nil {
+					c.Request.RemoteAddr = net.JoinHostPort(ip.String(), "0")
+				}
+			}
+			c.Request.Header.Del("X-Forwarded-For")
+			c.Request.Header.Del("X-Real-IP")
+			c.Request.Header.Del("CF-Connecting-IP")
+		} else if remoteHost == "127.0.0.1" || remoteHost == "::1" {
+			// Preserve local cloudflared compatibility, including IPv6 clients.
+			if ip := net.ParseIP(c.GetHeader("CF-Connecting-IP")); ip != nil {
+				c.Request.RemoteAddr = net.JoinHostPort(ip.String(), "0")
+				c.Request.Header.Del("X-Forwarded-For")
+				c.Request.Header.Del("X-Real-IP")
 			}
 		}
 

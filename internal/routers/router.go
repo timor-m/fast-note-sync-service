@@ -3,6 +3,7 @@ package routers
 import (
 	"embed"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/haierkeys/fast-note-sync-service/internal/app"
@@ -22,12 +23,6 @@ var methodLimiters = limiter.NewMethodLimiter().AddBuckets(
 		FillInterval: time.Second,
 		Capacity:     10,
 		Quantum:      10,
-	},
-	limiter.BucketRule{
-		Key:          "/api/user/login",
-		FillInterval: time.Second,
-		Capacity:     5,
-		Quantum:      1,
 	},
 	limiter.BucketRule{
 		Key:          "/api/share/verify",
@@ -90,13 +85,13 @@ func NewRouter(frontendFiles embed.FS, appContainer *app.App, uni *ut.UniversalT
 	initWebSocketRoutes(wss, appContainer)
 
 	r := gin.New()
-	r.Use(middleware.Proxy(cfg.Server.TrustedProxies))
+	middleware.ConfigureProxy(r, cfg.Server.TrustedProxies, cfg.Server.ESARealIP)
 	r.Use(middleware.Cors(cfg.Server.CORSAllowedOrigins, cfg.Server.ExtApiUrl))
 	if len(cfg.Server.CustomResponseHeaders) > 0 {
 		r.Use(middleware.CustomHeaders(cfg.Server.CustomResponseHeaders))
 	}
 
-	r.Use(frontendProxy(cfg.Web.Frontend, cfg.Server.TrustedProxies...))
+	r.Use(frontendProxy(cfg.Web.Frontend))
 
 	// Register Static routes
 	// 注册静态资源路由
@@ -130,7 +125,7 @@ func NewRouter(frontendFiles embed.FS, appContainer *app.App, uni *ut.UniversalT
 func NewWebGuiRouter(frontendFiles embed.FS, appContainer *app.App) *gin.Engine {
 	cfg := appContainer.Config()
 	r := gin.New()
-	r.Use(middleware.Proxy(cfg.Server.TrustedProxies))
+	middleware.ConfigureProxy(r, cfg.Server.TrustedProxies, cfg.Server.ESARealIP)
 	r.Use(middleware.Cors(cfg.Server.CORSAllowedOrigins, cfg.Server.ExtApiUrl))
 	if len(cfg.Server.CustomResponseHeaders) > 0 {
 		r.Use(middleware.CustomHeaders(cfg.Server.CustomResponseHeaders))
@@ -147,11 +142,20 @@ func NewWebGuiRouter(frontendFiles embed.FS, appContainer *app.App) *gin.Engine 
 func NewShareRouter(frontendFiles embed.FS, appContainer *app.App) *gin.Engine {
 	cfg := appContainer.Config()
 	r := gin.New()
-	r.Use(middleware.Proxy(cfg.Server.TrustedProxies))
+	middleware.ConfigureProxy(r, cfg.Server.TrustedProxies, cfg.Server.ESARealIP)
 	r.Use(middleware.Cors(cfg.Server.CORSAllowedOrigins, cfg.Server.ExtApiUrl))
 	if len(cfg.Server.CustomResponseHeaders) > 0 {
 		r.Use(middleware.CustomHeaders(cfg.Server.CustomResponseHeaders))
 	}
+
+	// A separate share port also needs the Nuxt share page, assets and BFF.
+	shareProxy := frontendProxy(cfg.Web.Frontend)
+	r.Use(func(c *gin.Context) {
+		path := c.Request.URL.Path
+		if strings.HasPrefix(path, "/s/") || strings.HasPrefix(path, "/_nuxt/") || strings.HasPrefix(path, "/api/frontend/shares/") {
+			shareProxy(c)
+		}
+	})
 
 	registerStaticFiles(r, frontendFiles, appContainer)
 	registerShareRoutes(r, frontendFiles, appContainer)

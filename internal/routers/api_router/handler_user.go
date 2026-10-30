@@ -2,6 +2,10 @@ package api_router
 
 import (
 	"context"
+	"errors"
+	"math"
+	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/haierkeys/fast-note-sync-service/internal/app"
@@ -19,13 +23,15 @@ import (
 // 使用 App Container 注入依赖，支持统一错误处理
 type UserHandler struct {
 	*Handler
+	loginGuard *loginGuard
 }
 
 // NewUserHandler creates UserHandler instance
 // NewUserHandler 创建 UserHandler 实例
 func NewUserHandler(a *app.App) *UserHandler {
 	return &UserHandler{
-		Handler: NewHandler(a),
+		Handler:    NewHandler(a),
+		loginGuard: newLoginGuard(),
 	}
 }
 
@@ -103,15 +109,29 @@ func (h *UserHandler) Login(c *gin.Context) {
 	clientType := c.GetHeader("x-client")
 	userAgent := c.GetHeader("User-Agent")
 
+	finish, retry := h.loginGuard.begin(clientIP, params.Credentials)
+	if retry > 0 {
+		seconds := int(math.Ceil(retry.Seconds()))
+		c.Header("Retry-After", strconv.Itoa(seconds))
+		c.JSON(http.StatusTooManyRequests, pkgapp.Res{Code: code.ErrorTooManyRequests.Code(), Status: false, Message: "登录尝试过多，请稍后重试", Data: gin.H{"retryAfter": seconds}})
+		return
+	}
+	failed, success := false, false
+	defer func() { finish(failed, success) }()
+
 	// Call UserService to perform login
 	// 调用 UserService 执行登录
 	userDTO, err := h.App.UserService.Login(ctx, params, clientIP, clientType, userAgent)
 	if err != nil {
+		var authError *code.Code
+		failed = errors.As(err, &authError) && (authError.Code() == 401 || authError.Code() == 402 || authError.Code() == 403)
+
 		h.logError(ctx, "UserHandler.Login", err)
 		apperrors.ErrorResponse(c, err)
 		return
 	}
 
+	success = true
 	response.ToResponse(code.Success.WithData(userDTO))
 }
 

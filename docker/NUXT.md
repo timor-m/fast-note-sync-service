@@ -79,7 +79,7 @@ docker compose -f docker/docker-compose.yaml up -d --no-build
 
 ### 分享浏览统计与 TDK
 
-分享笔记成功读取时累计一次 PV，复用原分享记录的 `viewCount` 和 `lastViewedAt`，在原后台的分享管理及 `/api/shares` 查看。权限校验、密码错误、无效分享、元信息预览和附件请求不计数；正常刷新或再次成功读取会再次累计。这是成功读取次数，不是独立访客 UV，也不区分能执行页面脚本的机器人；不接入第三方追踪器。旧历史计数保留，不追溯修正之前可能重复累计的数据。
+分享笔记成功读取时累计一次 PV，复用原分享记录的 `viewCount` 和 `lastViewedAt`，在阅读页顶部、原后台的分享管理及 `/api/shares` 查看。阅读页展示已落库的同一份统计，随正文返回，不增加计数请求，也不伪造本次访问的即时增量。权限校验、密码错误、无效分享、元信息预览和附件请求不计数；正常刷新或再次成功读取会再次累计。这是成功读取次数，不是独立访客 UV，也不区分能执行页面脚本的机器人；不接入第三方追踪器。旧历史计数保留，不追溯修正之前可能重复累计的数据。
 
 沿用约 5 分钟的内存聚合落库机制，正常关闭时也会写入；定时写入失败会保留增量等待重试。异常强制终止仍可能丢失尚未落库的数据，不把它当作精确审计计数。
 
@@ -107,6 +107,34 @@ Go 现有 YAML `web.frontend` 配置继续保留，原生 Go 运行时仍默认�
 
 服务端更新检查仅查询 `timorm/fast-note-sync-service` 的 Docker Hub 版本标签，不再比较上游 Go Release。后台原二进制升级操作改为打开本项目部署说明，后端也拒绝替换二进制；Obsidian 插件继续按其独立上游版本检查。
 
+### 登录失败保护
+
+后台和 Nuxt 登录由 Go 统一限制：同一登录标识（用户名或邮箱，忽略大小写与首尾空格）15 分钟内失败 5 次，或同一 IP 失败 20 次后，冷却 15 分钟。成功登录清除该登录标识的失败记录，IP 累计保留到窗口过期。冷却期间返回 HTTP 429 和 `Retry-After` 秒数；数据库等内部错误不计入密码错误，也不清除已有记录。并发尝试会预占额度，无法通过同时发请求绕过阈值。
+
+规则保存在单个 Go 进程内存中，重启后重置；限制表有容量上限并清理过期记录。不同用户名与邮箱仍是不同登录标识，但共用 IP 限制。现有登录会话不受失败冷却影响。
+
+Nuxt 只监听回环地址，通过 Go 接收已校验的访客 IP，并在登录及后续请求中传回 Go，保证令牌 IP 绑定一致。外部 Nginx、NAS 或其他反向代理必须在 YAML 的 `server.trusted-proxies` 中明确配置其实际 IP/CIDR，并覆盖客户端传入的转发头；不要设置为全网可信。修复前由 Nuxt 内部 IP 绑定的旧登录会话可能需要重新登录，笔记数据不受影响。
+
+### 阿里云 ESA 通过 IPv6 直接回源 NAS
+
+1. 在 ESA 站点的“规则 → 转换规则 → 托管转换”开启“添加真实客户端 IP 请求头”，使用默认名称 `ali-real-client-ip`。
+2. 从该站点“安全防护 → 源站防护”获取当前回源 IPv4/IPv6 网段，并将其用于 NAS 防火墙白名单与下方 `trusted-proxies`。这里填写 ESA 节点来源网段，不是 NAS 自己的 IPv6 地址；节点列表变化后需同步更新。[阿里云真实 IP 说明](https://help.aliyun.com/zh/edge-security-acceleration/esa/user-guide/managed-conversion/) · [源站防护说明](https://help.aliyun.com/zh/edge-security-acceleration/esa/user-guide/origin-protection/)
+3. 在现有挂载的 `config/config.yaml` 的 `server` 节点合并以下配置，然后重建容器：
+
+```yaml
+server:
+  esa-real-ip: true
+  trusted-proxies:
+    # 以下仅为文档示例；必须替换成自己 ESA 控制台提供的实际网段。
+    - '2001:db8:100::/48'
+```
+
+也可通过 Docker Compose 的环境变量覆盖 YAML：`FNS_ESA_REAL_IP=true`，`FNS_TRUSTED_PROXIES` 填写实际网段，多个用逗号或换行分隔。Compose 中留空则保留原 YAML 配置。ESA 模式默认关闭；启用时缺少可信列表、网段非法或配置 `::/0`、`0.0.0.0/0` 会拒绝启动。
+
+仅当请求实际 TCP 来源属于配置的可信网段时，才读取 ESA 注入的单个 IPv4/IPv6 地址。缺少或非法的 ESA 头退回记录回源节点 IP，忽略可能被伪造的 XFF；不信任列表外来源伪造的 ESA 头。后台、Nuxt、SSR 与登录令牌 IP 绑定使用同一解析结果，传给 Nuxt 前会删除原始代理头。
+
+如果 NAS 的 Docker IPv6 端口映射把所有外部连接都转换成同一个网桥或回环 IP，应用将无法识别实际 ESA TCP 来源。此时应先在 NAS 防火墙限制仅允许 ESA 回源，再调整 Docker 网络保留来源地址；不要仅为启用真实 IP 就信任所有网桥来源，否则直连请求也可能伪造 ESA 头。部署后可对照 Go API 访问日志中的客户端 IP 与实际访客出口地址验证，不需要公开诊断接口。
+
 ## 日志、升级、回滚
 
 ```sh
@@ -133,4 +161,4 @@ docker compose --env-file docker/.env -f docker/docker-compose.yaml up -d --no-b
 
 覆盖真实 Go API、SSR、Cookie、分享与附件、MCP、WebSocket，以及两个进程的启停、Node 故障恢复、Go 故障触发容器重启、关闭前台不启动 Node。详细结果见 `web/docs/single-container-verification.md`。
 
-真实 Obsidian 多设备同步仍需实际插件和设备进行人工回归。公开知识库发布功能尚未提供，新分享页仍为安全转义的文本预览，首阶段业务范围没有扩大。
+真实 Obsidian 多设备同步仍需实际插件和设备进行人工回归。公开知识库发布功能尚未提供。分享页采用旧版阅读布局，已接入 Markdown、目录导航、阅读宽度、刷新、配色、主题、公式、Mermaid 和受控附件；原链接由 Go 直接代理到 Nuxt。

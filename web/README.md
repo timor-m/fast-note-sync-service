@@ -40,10 +40,10 @@ npm run smoke:docker
 - `/login`：复用 Go 账号，通过服务端 BFF 登录、退出及处理过期。
 - `/app`：真实用户信息、Vault 列表、按 Vault 读取的最近笔记。
 - 不提供演示知识库，`/kb/*` 返回 404。
-- `/s/:token?id=:resourceId`：原分享授权、密码校验、只读文本预览。原 `/share/:side/:token` 继续使用旧 React。
+- `/s/:token?id=:resourceId`：原分享授权、密码校验、Markdown 只读阅读、目录、宽度切换、刷新、8 套配色及明暗主题。后台、Obsidian 及已有 `/share/:side/:token` 笔记链接由 Go 反向代理到 Nuxt 渲染（地址保持不变）；附件分享保留旧入口。
 
-各页面使用独立 TDK 和社交元信息；无密码分享的标题/摘要由服务端预取，预取不计 PV。所有分享、登录和个人工作台均默认禁止搜索收录。密码分享在未解锁时不输出笔记标题/摘要。生产 canonical 可配置 `FNS_SITE_URL`，本地开发用 `NUXT_PUBLIC_SITE_URL`。浏览统计复用 Go 既有分享记录与原后台，口径和延迟见[统计说明](../docker/NUXT.md#分享浏览统计与-tdk)。
+各页面使用独立 TDK 和社交元信息；无密码分享的标题/摘要由服务端预取，预取不计 PV。所有分享、登录和个人工作台均默认禁止搜索收录。密码分享在未解锁时不输出笔记标题/摘要。生产 canonical 可配置 `FNS_SITE_URL`，本地开发用 `NUXT_PUBLIC_SITE_URL`。浏览次数在分享页顶部和原后台展示，复用 Go 既有分享记录，口径和汇总延迟见[统计说明](../docker/NUXT.md#分享浏览统计与-tdk)。
 
-完整 Markdown Renderer、AST/Shiki、双链、编辑器和知识库发布管理仍留在后续阶段，不为当前文本预览加入未使用的依赖或包装层。
+分享页使用独立阅读布局，沿用旧版配色值，支持随内容适配的表格、任务列表、Obsidian 提示块及折叠、代码高亮/行号切换/图标复制、公式、Mermaid、脚注及受控附件。图表可全屏查看，支持缩放、拖拽、适应窗口及 Esc 返回。音频使用语音气泡，支持播放/暂停、时长、声波反馈和进度拖动；同篇多段音频互斥播放，无 JavaScript 时保留原生控件。触屏顶部保留明暗切换和“更多”，刷新、配色及大纲入口收在菜单中，大纲从左侧抽屉打开；PC 保留顶部工具栏和右侧大纲。阅读偏好保存在本地；跨笔记双链、编辑器和知识库发布管理尚未实现。
 
 `docs/P0-analysis.md` 和 `docs/verification.md` 是历史双容器阶段记录；当前架构和测试结果以 `docs/single-container-verification.md` 为准。

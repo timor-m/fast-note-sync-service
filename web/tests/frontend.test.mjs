@@ -47,7 +47,7 @@ test('production frontend and Go API contract', async (t) => {
           return reply({ title: '公开笔记', description: '公开笔记的安全摘要' })
         return fail(483)
       }
-      if (path.searchParams.get('password') !== 'test-password')
+      if (req.headers['share-token'] !== 'public-token' && path.searchParams.get('password') !== 'test-password')
         return fail(484)
       if (
         path.pathname.endsWith('/file') &&
@@ -178,15 +178,15 @@ test('production frontend and Go API contract', async (t) => {
     const before = requests.filter((r) => r.path.startsWith('/api/share/note')).length
     const publicPage = await fetch(base + '/s/public-token?id=42')
     const publicHtml = await publicPage.text()
-    assert.match(publicHtml, /<title>公开笔记 · Fast Note Sync<\/title>/)
+    assert.match(publicHtml, /<title>公开笔记<\/title>/)
     assert.match(publicHtml, /公开笔记的安全摘要/)
     assert.equal(publicPage.headers.get('x-robots-tag'), 'noindex, nofollow')
     assert.match(publicHtml, /noindex, nofollow/)
     assert.match(publicPage.headers.get('cache-control'), /no-store/)
     const privateHtml = await (await fetch(base + '/s/share-token?id=42')).text()
-    assert.match(privateHtml, /<title>笔记分享 · Fast Note Sync<\/title>/)
+    assert.match(privateHtml, /<title>笔记分享<\/title>/)
     assert.doesNotMatch(privateHtml, /alert\(1\)|test-password|分享\.md/)
-    assert.equal(requests.filter((r) => r.path.startsWith('/api/share/note')).length, before)
+    assert.equal(requests.filter((r) => r.path.startsWith('/api/share/note')).length, before + 2)
     const previewWithPassword = await fetch(base + '/api/frontend/shares/meta?token=share-token&id=42&password=test-password')
     assert.equal(previewWithPassword.status, 400)
     assert.ok(requests.filter((r) => r.path.startsWith('/api/share/meta')).every((r) => !r.path.includes('password=')))

@@ -79,6 +79,9 @@ func LoadConfig(f string) (*AppConfig, string, error) {
 	if err := defaults.Set(c); err != nil {
 		return nil, realpath, errors.Wrap(err, "re-set default config failed")
 	}
+	if err := c.Server.ApplyProxyEnv(); err != nil {
+		return nil, realpath, errors.Wrap(err, "validate proxy config failed")
+	}
 	if err := c.Web.Frontend.ApplyEnv(); err != nil {
 		return nil, realpath, errors.Wrap(err, "validate frontend config failed")
 	}

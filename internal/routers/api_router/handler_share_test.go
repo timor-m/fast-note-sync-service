@@ -127,7 +127,7 @@ func TestShareHandler_ViewCountingAndPreview(t *testing.T) {
 		}
 		c, w := newShareTestContext("GET", "/api/share/note?id=1", "", 0)
 		c.Set("share_token", "token")
-		c.Set("share_entity", &pkgapp.ShareEntity{UID: 7, SID: 9})
+		c.Set("share_entity", &pkgapp.ShareEntity{UID: 7, SID: 9, ViewCount: 37})
 		h := newTestShareHandler(mockSvc, nil)
 		if preview {
 			h.NoteMetadata(c)
@@ -135,9 +135,11 @@ func TestShareHandler_ViewCountingAndPreview(t *testing.T) {
 			assert.NotContains(t, w.Body.String(), "frontmatter")
 			assert.NotContains(t, w.Body.String(), "secret-token")
 			assert.NotContains(t, w.Body.String(), `"content"`)
+			assert.NotContains(t, w.Body.String(), `"viewCount"`)
 			mockSvc.AssertNotCalled(t, "RecordView", mock.Anything, mock.Anything)
 		} else {
 			h.NoteGet(c)
+			assert.Contains(t, w.Body.String(), `"viewCount":37`)
 		}
 		assert.Equal(t, "private, no-store", w.Header().Get("Cache-Control"))
 		mockSvc.AssertExpectations(t)
@@ -149,7 +151,7 @@ func TestShareHandler_FailedNoteDoesNotCount(t *testing.T) {
 	m.On("GetSharedNote", mock.Anything, "token", int64(1), "").Return((*dto.NoteDTO)(nil), code.ErrorNoteNotFound).Once()
 	c, _ := newShareTestContext("GET", "/api/share/note?id=1", "", 0)
 	c.Set("share_token", "token")
-	c.Set("share_entity", &pkgapp.ShareEntity{UID: 7, SID: 9})
+	c.Set("share_entity", &pkgapp.ShareEntity{UID: 7, SID: 9, ViewCount: 37})
 	newTestShareHandler(m, nil).NoteGet(c)
 	m.AssertNotCalled(t, "RecordView", mock.Anything, mock.Anything)
 	m.AssertExpectations(t)

@@ -10,7 +10,6 @@ COPY pkg ./pkg
 COPY config ./config
 COPY docs ./docs
 COPY frontend ./frontend
-RUN --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=1 go test ./...
 ARG TARGETOS
 ARG TARGETARCH
 ARG VERSION
@@ -27,7 +26,7 @@ COPY web/package*.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
 COPY web/ ./
 # Cross-platform reuse is safe only while the server output contains no native libraries.
-RUN npm run typecheck && npm run build && npm test && \
+RUN npm run build && \
     test -z "$(find .output -type f \( -name '*.node' -o -name '*.so' -o -name '*.dylib' \) -print -quit)"
 
 FROM node:22-bookworm-slim

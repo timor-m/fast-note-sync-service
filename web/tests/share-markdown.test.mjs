@@ -77,3 +77,21 @@ test('old Chinese heading fragments and duplicate headings resolve to the Nuxt o
   assert.equal(resolveArticleAnchor(headings, '#share-heading-1'), 'share-heading-1')
   assert.equal(resolveArticleAnchor(headings, '#不存在'), undefined)
 })
+
+
+test('Markdown and embedded HTML tables share exactly one scroll wrapper and preserve merged cells', () => {
+  const sources = [
+    '| 名称 | 状态 |\n| --- | --- |\n| Markdown | 正常 |',
+    '<table><tr><th colspan="2">HTML 表格</th></tr><tr><td rowspan="2">合并单元格</td><td>内容</td></tr><tr><td>更多内容</td></tr></table>',
+    '<div class="table-scroll"><table><tr><td>已有滚动容器</td></tr></table></div>',
+  ]
+  for (const source of sources) {
+    const { html } = renderShareMarkdown(source)
+    assert.equal((html.match(/class="table-scroll"/g) || []).length, 1)
+    assert.match(html, /class="table-scroll"><table>/)
+  }
+  const { html } = renderShareMarkdown(sources[1])
+  assert.match(html, /colspan="2"/)
+  assert.match(html, /rowspan="2"/)
+  assert.match(html, /更多内容/)
+})

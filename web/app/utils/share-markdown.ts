@@ -31,8 +31,6 @@ md.renderer.rules.fence = (tokens, index) => {
   const count = token.content.replace(/\n$/, '').split('\n').length
   return `<div class="code-block"><div class="code-actions"><button type="button" data-toggle-lines="true" aria-label="显示行号" aria-pressed="false"></button><button type="button" data-copy-code="true" aria-label="复制代码"></button></div><div class="code-surface"><div class="code-lines" aria-hidden="true">${Array.from({ length: count }, (_, i) => `<span>${i + 1}</span>`).join('')}</div><pre><code class="hljs">${code}</code></pre></div></div>`
 }
-md.renderer.rules.table_open = () => '<div class="table-scroll"><table>'
-md.renderer.rules.table_close = () => '</table></div>'
 for (const rule of ['th_open', 'td_open']) {
   md.renderer.rules[rule] = (tokens, index, options, _env, renderer) => {
     const token = tokens[index]!
@@ -97,9 +95,9 @@ function textOf(node: Root | RootContent): string {
   if (node.type === 'text') return node.value
   return 'children' in node ? node.children.map(textOf).join('') : ''
 }
-function visit(node: Root | RootContent, fn: (node: Element) => void) {
-  if (node.type === 'element') fn(node)
-  if ('children' in node) for (const child of node.children) visit(child, fn)
+function visit(node: Root | RootContent, fn: (node: Element, parent?: Root | Element) => void, parent?: Root | Element) {
+  if (node.type === 'element') fn(node, parent)
+  if ('children' in node) for (const child of node.children) visit(child, fn, node)
 }
 function anchorKey(value: string) {
   try { value = decodeURIComponent(value) } catch { /* malformed fragments stay literal */ }
@@ -170,7 +168,12 @@ export function renderShareMarkdown(content: string, files: Record<string, strin
   const math: string[] = []
   const diagrams: string[] = []
   const tree = sanitize(fromHtml(markdownRenderer(math, diagrams).render(body), { fragment: true }), schema)
-  visit(tree, (node) => {
+  visit(tree, (node, parent) => {
+    // Normalize Markdown and embedded HTML tables through one scroll wrapper.
+    const wrapped = parent?.type === 'element' && parent.tagName === 'div' && Array.isArray(parent.properties.className) && parent.properties.className.includes('table-scroll')
+    if (node.tagName === 'table' && parent && !wrapped) {
+      parent.children.splice(parent.children.indexOf(node), 1, { type: 'element', tagName: 'div', properties: { className: ['table-scroll'] }, children: [node] })
+    }
     const index = Number(node.properties.dataMathIndex)
     if (node.properties.dataMathIndex !== undefined && Number.isInteger(index) && math[index]) {
       node.children = fromHtml(math[index]!, { fragment: true }).children as Element['children']

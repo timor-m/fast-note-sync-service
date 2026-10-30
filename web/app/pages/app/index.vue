@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { requestErrorMessage } from '~/utils/request-error'
 import type { Vault, Note, Page } from '~~/shared/types/fns'
 const auth = useAuthStore()
 const request = useRequestFetch()
@@ -6,7 +7,7 @@ const { data: profile, error: profileError } = await useAsyncData(
   'profile',
   () => request('/api/frontend/auth/me'),
 )
-if (profileError.value?.statusCode === 401) await navigateTo('/login')
+if (profileError.value?.statusCode === 401) { auth.user = null; await navigateTo('/login') }
 if (profile.value) auth.user = profile.value.user
 const { data: vaults, error: vaultError } = await useAsyncData('vaults', () =>
   profile.value
@@ -31,8 +32,8 @@ const {
       : Promise.resolve(null),
   { watch: [selectedVault] },
 )
-watch([vaultError, noteError], (errors) => {
-  if (errors.some((error) => error?.statusCode === 401)) navigateTo('/login')
+watch([profileError, vaultError, noteError], (errors) => {
+  if (errors.some((error) => error?.statusCode === 401)) { auth.user = null; navigateTo('/login') }
 })
 usePageSeo({
   title: '我的工作区 · Fast Note Sync',
@@ -50,7 +51,7 @@ usePageSeo({
     <UButton class="workspace-logout" color="neutral" variant="outline" @click="auth.logout">退出登录</UButton>
   </section>
   <p v-if="profileError || vaultError" class="error" role="alert">
-    {{ profileError?.message || vaultError?.message }}
+    {{ requestErrorMessage(profileError || vaultError, '工作区加载失败，请稍后重试') }}
   </p>
   <section class="workspace-overview" aria-label="工作区概览">
     <article class="workspace-stat"><span class="workspace-stat-icon"><ReaderIcon name="file" /></span><div><strong>{{ vaults?.length || 0 }}</strong><span>个笔记库</span></div></article>
@@ -79,7 +80,7 @@ usePageSeo({
       </div>
       <p v-if="status === 'pending'" role="status">正在加载笔记…</p>
       <p v-else-if="noteError" class="error" role="alert">
-        {{ noteError.message }}
+        {{ requestErrorMessage(noteError, '笔记列表加载失败，请稍后重试') }}
       </p>
       <div v-else-if="!notes?.list?.length" class="workspace-empty workspace-empty-recent"><span class="workspace-empty-icon"><ReaderIcon name="file" /></span><strong>这里还没有笔记</strong><p>在 Obsidian 中同步笔记后，最近更新的内容会显示在这里。</p></div>
       <div v-else class="workspace-note-list">

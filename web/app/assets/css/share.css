@@ -193,6 +193,12 @@ html[data-share-theme=light] { color-scheme: light; background-color: #fff; }
  .reader-actions .reader-icon { width: 42px; height: 42px; }
  .reader-document-title { flex: 1; }
  .reader-document-title > div { width: 100%; }
+ /* Keep touch controls in their own top row, outside the scrolling code. */
+ .markdown-body .code-actions { position: static; justify-content: flex-end; padding: 4px 8px; border: 1px solid var(--line); border-bottom: 0; border-radius: 8px 8px 0 0; background: color-mix(in srgb,var(--soft) 40%,var(--reader-card)); opacity: 1; }
+ .markdown-body .code-actions button { width: 36px; height: 36px; }
+ .markdown-body .code-surface { border-radius: 0 0 8px 8px; }
+ .markdown-body .code-block pre { padding: 12px; }
+ .markdown-body .code-lines { padding: 12px 8px; }
  .markdown-body { font-size: 15px; }
  .markdown-body p, .markdown-body :is(ul,ol) { line-height: 26px; }
  .markdown-body h1 { font-size: 24px; line-height: 32px; }
@@ -238,19 +244,21 @@ html[data-share-theme=light] { color-scheme: light; background-color: #fff; }
 .diagram-viewer-actions .reader-icon { color: var(--ink); }
 .diagram-viewer-actions { display: flex; align-items: center; gap: 4px; }
 .diagram-viewer-actions output { min-width: 52px; text-align: right; margin-right: 8px; font: 12px ui-monospace,monospace; color: var(--muted); }
-.diagram-viewport { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; touch-action: none; cursor: grab; background-image: radial-gradient(var(--line) .7px,transparent .7px); background-size: 20px 20px; }
-.diagram-viewport.dragging { cursor: grabbing; user-select: none; }
-.diagram-canvas { display: flex; justify-content: center; align-items: center; padding: 32px; min-width: 100%; min-height: 100%; width: max-content; height: max-content; }
-.diagram-drawing { flex-shrink: 0; }
+.diagram-viewport { flex: 1; min-height: 0; overflow: hidden; overscroll-behavior: contain; touch-action: none; user-select: none; cursor: grab; background-image: radial-gradient(var(--line) .7px,transparent .7px); background-size: 20px 20px; }
+.diagram-viewport.dragging { cursor: grabbing; }
+.diagram-viewport * { cursor: inherit !important; }
+.diagram-viewport:focus { outline: none; }
+.diagram-canvas { position: relative; width: 100%; height: 100%; }
+.diagram-drawing { position: absolute; left: 50%; top: 50%; }
 .diagram-drawing > svg { width: 100%; height: 100%; max-width: none !important; display: block; }
 .code-actions button:focus-visible, .diagram-expand:focus-visible, .note-callout summary:focus-visible, .table-scroll:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 @media (max-width: 639px) { .diagram-viewer-hint { display: none; } .diagram-viewer-toolbar { padding: 8px; gap: 4px; } .diagram-viewer-actions { gap: 0; } .diagram-viewer-actions output { min-width: 40px; margin-right: 2px; } .diagram-viewer-toolbar h2 { font-size: 12px; } }
 
 /* One tooltip treatment for all reader actions; the accessible name is the hint. */
-:is(.reader-icon,.code-actions button,.diagram-expand)[aria-label]::after { content: attr(aria-label); position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%); z-index: 60; padding: 5px 9px; border-radius: 6px; background: var(--ink); color: var(--reader-card); font: 12px/20px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; white-space: nowrap; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity .12s; }
+:is(.reader-icon,.code-actions button,.diagram-expand)[aria-label]::after { content: attr(aria-label); width: max-content; position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%); z-index: 60; padding: 5px 9px; border-radius: 6px; background: var(--ink); color: var(--reader-card); font: 12px/20px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; white-space: nowrap; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity .12s; }
 :is(.reader-icon,.code-actions button,.diagram-expand)[aria-label]:is(:hover,:focus-visible)::after { opacity: 1; visibility: visible; transition-delay: .15s; }
 .reader-menu[open] > summary::after { display: none; }
-.reader-actions > :last-child::after, .diagram-viewer-actions > :last-child::after, .code-actions button:last-child::after, .mermaid-diagram .diagram-expand[aria-label]::after { left: auto; right: 0; transform: none; }
+.reader-actions > .reader-icon[aria-label]:last-child::after, .diagram-viewer-actions > .reader-icon[aria-label]:last-child::after, .code-actions button[aria-label]:last-child::after, .mermaid-diagram .diagram-expand[aria-label]::after { left: auto; right: 0; transform: none; }
 .markdown-body .mermaid-diagram svg, .diagram-drawing > svg { color: var(--ink); }
 /* SVG labels inherit Mermaid's node contrast colors, not article paragraph colors. */
 :is(.markdown-body .mermaid-diagram,.diagram-drawing) svg :is(p,strong,em,a,code) { color: inherit; }

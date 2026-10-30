@@ -9,6 +9,8 @@ import { join } from 'node:path'
 
 test('login BFF preserves client IP, cooldown and server-only token', async (t) => {
   const requests = []
+  let tokenIP
+  let authError = 0
   const backend = createServer(async (req, res) => {
     let text = ''
     for await (const chunk of req) text += chunk
@@ -20,7 +22,12 @@ test('login BFF preserves client IP, cooldown and server-only token', async (t) 
         res.setHeader('Retry-After', '900')
         return res.end(JSON.stringify({ code: 303, status: false, data: { retryAfter: 900 } }))
       }
+      tokenIP = req.headers['x-forwarded-for']
       return res.end(JSON.stringify({ code: 1, status: true, data: { uid: 1, username: 'test', token: 'SERVER_ONLY_TOKEN' } }))
+    }
+    if (req.url === '/api/user/info') {
+      const code = authError || (req.headers['x-forwarded-for'] !== tokenIP ? 312 : 0)
+      if (code) return res.end(JSON.stringify({ code, status: false }))
     }
     if (req.url?.startsWith('/api/note?')) {
       assert.equal(req.headers.authorization, 'Bearer SERVER_ONLY_TOKEN')
@@ -77,4 +84,44 @@ test('login BFF preserves client IP, cooldown and server-only token', async (t) 
   assert.match(await page.text(), /Private note/)
   assert.ok(requests.length >= 4)
   assert.ok(requests.every(req => req.ip === '192.0.2.10'), JSON.stringify(requests))
+  await t.test('IP change clears the rejected session and returns a useful 401', async () => {
+    const changed = await fetch(base + '/api/frontend/auth/me', { headers: { cookie, 'X-Forwarded-For': '192.0.2.11' } })
+    assert.equal(changed.status, 401)
+    const body = await changed.json()
+    assert.equal(body.data.code, 312)
+    assert.match(body.message, /登录 IP 已变化/)
+    const before = requests.length
+    const reused = await fetch(base + '/api/frontend/auth/me', { headers: { cookie, 'X-Forwarded-For': '192.0.2.10' } })
+    assert.equal(reused.status, 401)
+    assert.equal(requests.length, before, 'old cookie reached Go again')
+    const page = await fetch(base + '/app', { headers: { cookie, 'X-Forwarded-For': '192.0.2.10' }, redirect: 'manual' })
+    assert.equal(page.status, 302)
+    assert.equal(page.headers.get('location'), '/login')
+  })
+  for (const code of [313, 314]) {
+    await t.test(`binding error ${code} invalidates session`, async () => {
+      const login = await post('correct')
+      const freshCookie = login.headers.get('set-cookie').split(';')[0]
+      authError = code
+      const me = await fetch(base + '/api/frontend/auth/me', { headers: { cookie: freshCookie, 'X-Forwarded-For': '192.0.2.10' } })
+      assert.equal(me.status, 401)
+      assert.match((await me.json()).message, /登录环境已变化/)
+      authError = 0
+    })
+  }
+  await t.test('scope denial returns 403 and preserves the valid session', async () => {
+    const login = await post('correct')
+    const freshCookie = login.headers.get('set-cookie').split(';')[0]
+    authError = 315
+    const denied = await fetch(base + '/api/frontend/auth/me', { headers: { cookie: freshCookie, 'X-Forwarded-For': '192.0.2.10' } })
+    assert.equal(denied.status, 403)
+    assert.match((await denied.json()).message, /没有访问/)
+    const page = await fetch(base + '/app', { headers: { cookie: freshCookie, 'X-Forwarded-For': '192.0.2.10' } })
+    assert.equal(page.status, 200)
+    assert.match(await page.text(), /<p class="error" role="alert">\s*当前登录没有访问该内容的权限\s*<\/p>/)
+    authError = 0
+    const allowed = await fetch(base + '/api/frontend/auth/me', { headers: { cookie: freshCookie, 'X-Forwarded-For': '192.0.2.10' } })
+    assert.equal(allowed.status, 200)
+  })
+
 })

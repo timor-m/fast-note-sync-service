@@ -5,11 +5,12 @@ const content = ref('')
 const scale = ref(1)
 const natural = ref({ width: 1200, height: 800 })
 const dragging = ref(false)
-const drawingStyle = computed(() => ({ width: `${natural.value.width * scale.value}px`, height: `${natural.value.height * scale.value}px` }))
+const pan = ref({ x: 0, y: 0 })
+const drawingStyle = computed(() => ({ width: `${natural.value.width * scale.value}px`, height: `${natural.value.height * scale.value}px`, transform: `translate(-50%, -50%) translate(${pan.value.x}px, ${pan.value.y}px)` }))
 const idPrefix = useId().replace(/[^a-zA-Z0-9]/g, '')
 let opener: HTMLElement | null = null
 let sourceContainer: Element | null = null
-let drag: { x: number; y: number; left: number; top: number } | null = null
+let drag: { pointerId: number; x: number; y: number; left: number; top: number } | null = null
 let resizeObserver: ResizeObserver | undefined
 let savedOverflow = ''
 const opened = ref(false)
@@ -17,44 +18,42 @@ function fit() {
   const area = viewport.value
   if (!area) return
   scale.value = Math.max(.001, Math.min((area.clientWidth - 64) / natural.value.width, (area.clientHeight - 64) / natural.value.height, 2))
-  area.scrollTo(0, 0)
+  pan.value = { x: 0, y: 0 }
 }
-async function zoom(next: number, clientX?: number, clientY?: number) {
+function zoom(next: number, clientX?: number, clientY?: number) {
   const area = viewport.value
   if (!area) return
   const rect = area.getBoundingClientRect()
-  const x = clientX === undefined ? area.clientWidth / 2 : clientX - rect.left
-  const y = clientY === undefined ? area.clientHeight / 2 : clientY - rect.top
-  const before = scale.value
+  const x = clientX === undefined ? 0 : clientX - rect.left - area.clientWidth / 2
+  const y = clientY === undefined ? 0 : clientY - rect.top - area.clientHeight / 2
   const after = Math.max(.001, Math.min(next, 8))
-  const canvas = area.querySelector<HTMLElement>('.diagram-drawing')!
-  const offset = canvas.getBoundingClientRect()
-  const originX = (clientX === undefined ? rect.left + x : clientX) - offset.left
-  const originY = (clientY === undefined ? rect.top + y : clientY) - offset.top
+  const ratio = after / scale.value
+  pan.value = { x: x - (x - pan.value.x) * ratio, y: y - (y - pan.value.y) * ratio }
   scale.value = after
-  await nextTick()
-  const moved = canvas.getBoundingClientRect()
-  area.scrollLeft += moved.left + originX * after / before - (rect.left + x)
-  area.scrollTop += moved.top + originY * after / before - (rect.top + y)
 }
-function wheel(event: WheelEvent) { event.preventDefault(); const delta = Math.max(-100, Math.min(100, event.deltaY)); void zoom(scale.value * Math.exp(-delta * .002), event.clientX, event.clientY) }
+function wheel(event: WheelEvent) { event.preventDefault(); const delta = Math.max(-100, Math.min(100, event.deltaY)); zoom(scale.value * Math.exp(-delta * .002), event.clientX, event.clientY) }
 function startDrag(event: PointerEvent) {
-  if (event.button !== 0 || !viewport.value) return
+  if (event.button !== 0 || !event.isPrimary || !viewport.value || drag) return
   event.preventDefault()
-  drag = { x: event.clientX, y: event.clientY, left: viewport.value.scrollLeft, top: viewport.value.scrollTop }
+  viewport.value.focus({ preventScroll: true })
+  drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: pan.value.x, top: pan.value.y }
   dragging.value = true
   viewport.value.setPointerCapture(event.pointerId)
 }
 function moveDrag(event: PointerEvent) {
-  if (!drag || !viewport.value) return
-  viewport.value.scrollLeft = drag.left + drag.x - event.clientX
-  viewport.value.scrollTop = drag.top + drag.y - event.clientY
+  if (!drag || event.pointerId !== drag.pointerId) return
+  pan.value = { x: drag.left + event.clientX - drag.x, y: drag.top + event.clientY - drag.y }
 }
-function endDrag() { dragging.value = false; drag = null }
+function endDrag() {
+  const pointerId = drag?.pointerId
+  dragging.value = false
+  drag = null
+  if (pointerId !== undefined && viewport.value?.hasPointerCapture(pointerId)) viewport.value.releasePointerCapture(pointerId)
+}
 function onKey(event: KeyboardEvent) {
   if (event.ctrlKey || event.metaKey || event.altKey) return
   if (event.key === 'Tab') {
-    const controls = dialog.value?.querySelectorAll<HTMLButtonElement>('button:not([disabled])')
+    const controls = dialog.value?.querySelectorAll<HTMLElement>('button:not([disabled]), [tabindex="0"]')
     const first = controls?.[0], last = controls?.[controls.length - 1]
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
@@ -63,13 +62,13 @@ function onKey(event: KeyboardEvent) {
   const area = viewport.value
   if (!area) return
   if (['+', '=', '-','0', 'ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key)) event.preventDefault()
-  if (event.key === '+' || event.key === '=') void zoom(scale.value * 1.25)
-  else if (event.key === '-') void zoom(scale.value / 1.25)
+  if (event.key === '+' || event.key === '=') zoom(scale.value * 1.25)
+  else if (event.key === '-') zoom(scale.value / 1.25)
   else if (event.key === '0') fit()
-  else if (event.key === 'ArrowUp') area.scrollTop -= 80
-  else if (event.key === 'ArrowDown') area.scrollTop += 80
-  else if (event.key === 'ArrowLeft') area.scrollLeft -= 80
-  else if (event.key === 'ArrowRight') area.scrollLeft += 80
+  else if (event.key === 'ArrowUp') pan.value.y += 80
+  else if (event.key === 'ArrowDown') pan.value.y -= 80
+  else if (event.key === 'ArrowLeft') pan.value.x += 80
+  else if (event.key === 'ArrowRight') pan.value.x -= 80
 }
 function setDrawing(svg: SVGSVGElement) {
   // Mermaid already sanitizes this SVG. Namespace the clone's IDs to keep
@@ -106,6 +105,7 @@ async function open(svg: SVGSVGElement) {
   dialog.value.showModal()
   await nextTick()
   fit()
+  viewport.value?.focus({ preventScroll: true })
   resizeObserver = new ResizeObserver(fit)
   resizeObserver.observe(dialog.value!)
 }
@@ -133,10 +133,10 @@ defineExpose({ open, update })
         <button class="reader-icon" aria-label="放大图表" @click="zoom(scale * 1.25)"><ReaderIcon name="zoomIn" /></button>
         <button class="reader-icon" aria-label="原始大小" @click="zoom(1)">1:1</button>
         <button class="reader-icon" aria-label="适应窗口" @click="fit"><ReaderIcon name="reset" /></button>
-        <button class="reader-icon" aria-label="关闭图表" autofocus @click="close"><ReaderIcon name="close" /></button>
+        <button class="reader-icon" aria-label="关闭图表" @click="close"><ReaderIcon name="close" /></button>
       </div>
     </header>
-    <div ref="viewport" class="diagram-viewport" :class="{ dragging }" @wheel="wheel" @pointerdown="startDrag" @pointermove="moveDrag" @pointerup="endDrag" @pointercancel="endDrag">
+    <div ref="viewport" class="diagram-viewport" tabindex="0" autofocus aria-label="图表画布，可拖动、滚轮缩放或使用方向键移动" :class="{ dragging }" @wheel="wheel" @pointerdown="startDrag" @pointermove="moveDrag" @pointerup="endDrag" @pointercancel="endDrag" @lostpointercapture="endDrag">
       <div class="diagram-canvas"><div class="diagram-drawing" :style="drawingStyle" v-html="content" /></div>
     </div>
   </dialog>

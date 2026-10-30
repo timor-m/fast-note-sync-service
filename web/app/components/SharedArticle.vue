@@ -92,7 +92,7 @@ function onContentsClick(event: MouseEvent) {
 }
 function onContentsKey(event: KeyboardEvent) {
   if (event.key !== 'Tab') return
-  const controls = contentsDialog.value?.querySelectorAll<HTMLElement>('button,a[href]')
+  const controls = contentsDialog.value?.querySelectorAll<HTMLElement>('button,a[href],[tabindex="0"]')
   const first = controls?.[0], last = controls?.[controls.length - 1]
   if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
   else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
@@ -249,7 +249,7 @@ onBeforeUnmount(() => {
         <div class="reader-document-title">
           <span class="reader-file-icon"><ReaderIcon name="file" /></span>
           <div>
-            <h1 :title="title">{{ title }}</h1>
+            <ReaderTitle :text="title" />
             <div class="reader-document-meta"><span><ReaderIcon name="clock" /><time class="reader-modified-time" :title="modified">{{ modified }}</time></span><span v-if="version" class="reader-version">版本 v{{ version }}</span><span class="reader-views" title="分享浏览次数，按服务端约 5 分钟的汇总周期更新"><ReaderIcon name="eye" />浏览 {{ viewCount === undefined ? '—' : new Intl.NumberFormat('zh-CN').format(viewCount) }}</span></div>
           </div>
         </div>
@@ -269,7 +269,7 @@ onBeforeUnmount(() => {
             </div>
           </details>
           <button v-if="rendered.headings.length" class="reader-icon desktop-contents-button" :class="{ selected: preferences.contents }" :aria-label="preferences.contents ? '隐藏目录' : '显示目录'" :aria-expanded="preferences.contents" aria-controls="article-contents" @click="preferences.contents = !preferences.contents"><ReaderIcon name="toc" /></button>
-          <button class="reader-icon touch-reader-action" :aria-label="isDark ? '切换浅色模式' : '切换暗黑模式'" @click="toggleTheme"><ReaderIcon :name="isDark ? 'sun' : 'moon'" /></button>
+          <button class="reader-icon touch-reader-action" :aria-label="isDark ? '切换浅色模式' : '切换暗黑模式'" @click.stop="toggleTheme"><ReaderIcon :name="isDark ? 'sun' : 'moon'" /></button>
           <details class="reader-menu reader-more touch-reader-action">
             <summary class="reader-icon" aria-label="更多选项"><ReaderIcon name="more" /></summary>
             <div class="reader-menu-panel reader-more-panel" role="menu" aria-label="更多阅读选项">
@@ -301,8 +301,8 @@ onBeforeUnmount(() => {
       </div>
     </main>
     <dialog ref="contentsDialog" class="reader-contents-drawer" aria-labelledby="reader-contents-title" @close="afterContentsClose" @click="onContentsClick" @keydown="onContentsKey">
-      <div class="drawer-heading"><div><h2 id="reader-contents-title">文章大纲</h2><p>{{ title }}</p></div><button class="reader-icon" aria-label="关闭大纲" autofocus @click="closeContents"><ReaderIcon name="close" /></button></div>
-      <nav aria-label="文章章节">
+      <div class="drawer-heading"><div><h2 id="reader-contents-title">文章大纲</h2><p>{{ title }}</p></div><button class="reader-icon" aria-label="关闭大纲" @click="closeContents"><ReaderIcon name="close" /></button></div>
+      <nav aria-label="文章章节" tabindex="0" autofocus>
         <a v-for="heading in outlineHeadings" :key="heading.id" :href="`#${heading.id}`" :style="{ paddingLeft: `${(heading.level - 1) * 10 + 10}px` }" :class="{ active: activeHeading === heading.id }" :aria-current="activeHeading === heading.id ? 'location' : undefined" @click.prevent="jump(heading.id)">{{ heading.text }}</a>
       </nav>
     </dialog>

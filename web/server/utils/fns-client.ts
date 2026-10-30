@@ -86,13 +86,20 @@ export async function fnsRequest<T>(
     const code = result?.code
     if (
       options.token &&
-      (response.status === 401 || [306, 307, 308, 309, 310].includes(code || 0))
+      (response.status === 401 || [306, 307, 308, 309, 310, 312, 313, 314].includes(code || 0))
     ) {
       await clearWebSession(event)
-      throw createError({ statusCode: 401, message: '登录已过期，请重新登录' })
+      const changed = [312, 313, 314].includes(code || 0)
+      throw createError({
+        statusCode: 401,
+        statusMessage: 'Unauthorized',
+        message: code === 312 ? '登录 IP 已变化，请重新登录' : changed ? '登录环境已变化，请重新登录' : '登录已过期，请重新登录',
+        data: { code },
+      })
     }
     const messages: Record<number, string> = {
       303: '登录尝试过多，请稍后重试',
+      315: '当前登录没有访问该内容的权限',
       401: '登录失败，请检查账号或密码',
       402: '登录失败，请检查账号或密码',
       403: '登录失败，请检查账号或密码',
@@ -107,7 +114,7 @@ export async function fnsRequest<T>(
     if (throttled && retryAfter && /^\d+$/.test(retryAfter))
       setResponseHeader(event, 'Retry-After', Number(retryAfter))
     throw createError({
-      statusCode: throttled ? 429 : 400,
+      statusCode: throttled ? 429 : code === 315 ? 403 : 400,
       message: messages[code || 0] || '笔记服务请求失败，请稍后重试',
       data: { code },
     })

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { requestErrorMessage } from '~/utils/request-error'
 import type { Note } from '~~/shared/types/fns'
 import { renderShareMarkdown } from '~/utils/share-markdown'
 
@@ -34,7 +35,7 @@ usePageSeo({ title: () => `${title.value} · 我的工作区`, description: () =
       <p>{{ path }}</p>
     </header>
     <p v-if="status === 'pending'" class="workspace-note-state" role="status">正在打开笔记…</p>
-    <section v-else-if="error" class="panel workspace-note-state error" role="alert">{{ error.message || '无法加载这篇笔记。' }}</section>
+    <section v-else-if="error" class="panel workspace-note-state error" role="alert">{{ requestErrorMessage(error, '无法加载这篇笔记。') }}</section>
     <article v-else class="article-paper workspace-note-paper">
       <MarkdownReaderBody :html="rendered.html" />
       <p v-if="!note?.content" class="muted">这篇笔记暂时没有正文内容。</p>

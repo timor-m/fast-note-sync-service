@@ -1,9 +1,11 @@
 export default defineNuxtConfig({
   compatibilityDate: '2026-10-30',
   modules: ['@nuxt/ui', '@pinia/nuxt'],
-  ui: { fonts: false },
+  // Only these semantic colors are used by the app; neutral is always included.
+  ui: { fonts: false, theme: { colors: ['primary', 'error'] } },
   css: ['~/assets/css/main.css', '~/assets/css/share.css', 'katex/dist/katex.min.css'],
   devtools: { enabled: false },
+  features: { inlineStyles: false },
   app: {
     head: {
       htmlAttrs: { lang: 'zh-CN' },

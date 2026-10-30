@@ -8,6 +8,7 @@ import { createServer } from 'node:net'
 import { once } from 'node:events'
 import { randomBytes } from 'node:crypto'
 const exec = promisify(execFile)
+const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
 // Model a stable client behind the existing external reverse proxy. Docker
 // Host connections in this test environment can use different source IPs.
 const nativeFetch = globalThis.fetch
@@ -123,9 +124,9 @@ try {
   assert.equal(Array.isArray(running) ? running.length : 1, 1)
   pass('one Compose service and one running container')
   await ready()
-  assert.equal((await api('/api/version')).version, '1.0.2')
+  assert.equal((await api('/api/version')).version, version)
   assert.equal((await readFile(join(dir, 'config/lastVersion'), 'utf8')).trim(), '3.6.1')
-  pass('fork version is 1.0.2 while database migration compatibility remains 3.6.1')
+  pass(`fork version is ${version} while database migration compatibility remains 3.6.1`)
   for (let i = 0; i < 100; i++) {
     if ((await fetch(base + '/api/frontend/health')).ok) break
     await new Promise((resolve) => setTimeout(resolve, 200))

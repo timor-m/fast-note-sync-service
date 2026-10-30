@@ -480,7 +480,7 @@ try {
   assert.match(uid, /Uid:\s+1000\s/)
   pass('Nuxt runs unprivileged and its crash did not restart the container')
   const findGo =
-    'for p in /proc/[0-9]*/cmdline; do mapfile -d "" -t args < "$p" 2>/dev/null || continue; if [ "${args[0]}" = /fast-note-sync/fast-note-sync-service ] || [ "${args[1]}" = /fast-note-sync/fast-note-sync-service ]; then basename "$(dirname "$p")"; fi; done'
+    'for p in /proc/[0-9]*/cmdline; do mapfile -d "" -t args < "$p" 2>/dev/null || continue; if [ "${args[0]##*/}" = fast-note-sync-service ] || [ "${args[1]##*/}" = fast-note-sync-service ]; then basename "$(dirname "$p")"; fi; done'
   const goPid = (
     await compose('exec', '-T', 'fast-note-sync-service', 'bash', '-c', findGo)
   ).stdout.trim()

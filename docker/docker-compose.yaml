@@ -17,6 +17,7 @@ services:
       FNS_SESSION_PASSWORD: "${FNS_SESSION_PASSWORD:-}"
       # Empty values preserve the existing mounted YAML proxy settings.
       FNS_ESA_REAL_IP: "${FNS_ESA_REAL_IP:-}"
+      FNS_ESA_ORIGIN_SECRET: "${FNS_ESA_ORIGIN_SECRET:-}"
       FNS_TRUSTED_PROXIES: "${FNS_TRUSTED_PROXIES:-}"
       FNS_SESSION_SECURE: "${FNS_SESSION_SECURE:-true}"
     volumes:

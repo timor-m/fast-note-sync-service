@@ -54,7 +54,8 @@ server:
   # 2. Remote Deployment: If your reverse proxy is on a separate server, you must add its IP or CIDR block to this list.
   trusted-proxies: []
   # ESA 直连回源：启用后仅接受上述可信来源注入的 ali-real-client-ip。
-  # 请填 ESA 控制台“源站防护”的回源网段，不是 NAS 的地址；禁止全网可信。
+  # 付费版填写 ESA“源站防护”的回源网段，不是 NAS 地址；禁止全网可信。
+  # 免费版可保持 trusted-proxies: []，改用环境变量 FNS_ESA_ORIGIN_SECRET 验证回源。
   esa-real-ip: false
 
 

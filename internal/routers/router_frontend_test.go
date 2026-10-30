@@ -42,7 +42,7 @@ func TestFrontendProxyMetadata(t *testing.T) {
 	}))
 	defer upstream.Close()
 	router := gin.New()
-	middleware.ConfigureProxy(router, nil, false)
+	middleware.ConfigureProxy(router, nil, false, "")
 	router.Use(frontendProxy(config.FrontendConfig{Enabled: true, Target: upstream.URL, Timeout: "1s"}))
 	router.GET("/s/:token", func(c *gin.Context) { t.Error("reached legacy handler") })
 	req := httptest.NewRequest("GET", "http://notes.example/s/token?id=42&x=a%2Fb", nil)
@@ -242,7 +242,7 @@ func TestESAVisitorIPReachesNuxtWithoutRawHeaders(t *testing.T) {
 	}))
 	defer upstream.Close()
 	router := gin.New()
-	middleware.ConfigureProxy(router, []string{"2001:db8:100::/48"}, true)
+	middleware.ConfigureProxy(router, []string{"2001:db8:100::/48"}, true, "")
 	router.Use(frontendProxy(config.FrontendConfig{Enabled: true, Target: upstream.URL, Timeout: "1s"}))
 	req := httptest.NewRequest("GET", "/app", nil)
 	req.RemoteAddr = "[2001:db8:100::1]:443"
@@ -255,5 +255,32 @@ func TestESAVisitorIPReachesNuxtWithoutRawHeaders(t *testing.T) {
 	router.ServeHTTP(res, req)
 	if res.Code != 200 || res.Body.String() != "ok" {
 		t.Fatalf("bad response: %d %s", res.Code, res.Body.String())
+	}
+}
+
+func TestESAOriginSecretIsNotForwardedToNuxt(t *testing.T) {
+	const secret = "unit-test-origin-key-at-least-32-characters"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-FNS-Origin-Key") != "" || r.Header.Get("ali-real-client-ip") != "" {
+			t.Error("raw ESA credentials reached Nuxt")
+		}
+		if r.Header.Get("X-Forwarded-For") != "2001:db8:200::8" {
+			t.Error("visitor IP was not normalized")
+		}
+		w.Write([]byte("ok"))
+	}))
+	defer upstream.Close()
+	router := gin.New()
+	middleware.ConfigureProxy(router, nil, true, secret)
+	router.Use(frontendProxy(config.FrontendConfig{Enabled: true, Target: upstream.URL, Timeout: "1s"}))
+	req := httptest.NewRequest("GET", "/app", nil)
+	req.RemoteAddr = "[2001:db8:100::1]:443"
+	req.Header.Set("X-FNS-Origin-Key", secret)
+	req.Header.Set("ali-real-client-ip", "2001:db8:200::8")
+	req.Header.Set("X-Forwarded-For", "203.0.113.99")
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+	if res.Code != 200 || res.Body.String() != "ok" {
+		t.Fatal("proxy failed")
 	}
 }

@@ -37,6 +37,7 @@ type ServerConfig struct {
 	// ExtApiUrl 外部访问 API 的地址
 	ExtApiUrl          string   `yaml:"ext-api-url"`
 	CORSAllowedOrigins []string `yaml:"cors-allowed-origins"` // CORSAllowedOrigins allowed origins for CORS / CORSAllowedOrigins 跨域允许源白名单
+	ESAOriginSecret    string   `yaml:"-" json:"-"`           // Environment only; never serialize the origin credential.
 	ESARealIP          bool     `yaml:"esa-real-ip"`          // Trust ali-real-client-ip only from configured proxies.
 	TrustedProxies     []string `yaml:"trusted-proxies"`      // TrustedProxies trusted proxies IP/CIDR list / TrustedProxies 可信代理 IP/CIDR 列表
 
@@ -66,8 +67,24 @@ func (c *ServerConfig) ApplyProxyEnv() error {
 	if value := strings.TrimSpace(os.Getenv("FNS_TRUSTED_PROXIES")); value != "" {
 		c.TrustedProxies = strings.FieldsFunc(value, func(r rune) bool { return r == ',' || r == ';' || r == ' ' || r == '\n' || r == '\t' || r == '\r' })
 	}
-	if c.ESARealIP && len(c.TrustedProxies) == 0 {
-		return fmt.Errorf("server.esa-real-ip requires explicit trusted-proxies containing the ESA origin IPs/CIDRs")
+	if value := os.Getenv("FNS_ESA_ORIGIN_SECRET"); value != "" {
+		c.ESAOriginSecret = value
+	}
+	if c.ESAOriginSecret != "" {
+		if !c.ESARealIP {
+			return fmt.Errorf("FNS_ESA_ORIGIN_SECRET requires ESA real IP mode")
+		}
+		if len(c.ESAOriginSecret) < 32 || len(c.ESAOriginSecret) > 256 {
+			return fmt.Errorf("FNS_ESA_ORIGIN_SECRET must contain 32 to 256 printable ASCII characters")
+		}
+		for _, ch := range c.ESAOriginSecret {
+			if ch < 33 || ch > 126 {
+				return fmt.Errorf("FNS_ESA_ORIGIN_SECRET must contain 32 to 256 printable ASCII characters")
+			}
+		}
+	}
+	if c.ESARealIP && len(c.TrustedProxies) == 0 && c.ESAOriginSecret == "" {
+		return fmt.Errorf("server.esa-real-ip requires FNS_ESA_ORIGIN_SECRET or explicit ESA trusted-proxies")
 	}
 	for _, proxy := range c.TrustedProxies {
 		if net.ParseIP(proxy) != nil {

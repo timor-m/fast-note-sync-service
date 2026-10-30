@@ -115,6 +115,27 @@ Go 现有 YAML `web.frontend` 配置继续保留，原生 Go 运行时仍默认�
 
 Nuxt 只监听回环地址，通过 Go 接收已校验的访客 IP，并在登录及后续请求中传回 Go，保证令牌 IP 绑定一致。外部 Nginx、NAS 或其他反向代理必须在 YAML 的 `server.trusted-proxies` 中明确配置其实际 IP/CIDR，并覆盖客户端传入的转发头；不要设置为全网可信。修复前由 Nuxt 内部 IP 绑定的旧登录会话可能需要重新登录，笔记数据不受影响。
 
+### ESA 免费版：用回源密钥验证真实 IP
+
+免费版没有“源站防护”回源网段列表，可使用独立回源密钥验证 ESA 身份，无需填写 `FNS_TRUSTED_PROXIES`。配置顺序：
+
+1. 在 NAS 本地执行 `openssl rand -hex 32`，生成随机密钥；不要把密钥提交到仓库或粘贴到聊天。
+2. ESA 站点 → 规则 → 转换规则 → 托管转换，开启“添加真实客户端 IP 请求头”，保留 `ali-real-client-ip`。
+3. ESA 站点 → 规则 → 转换规则 → 修改请求头 → ESA 到源站，新增规则，匹配本服务域名的所有请求。选择“添加／静态”，名称 `X-FNS-Origin-Key`，值填刚生成的密钥。必须用“添加”覆盖客户端的同名头；“变更”只对原本已有的头生效。[官方操作说明](https://help.aliyun.com/zh/edge-security-acceleration/esa/user-guide/modify-outgoing-request-header)
+4. 在 NAS Compose 现有服务的 `environment` 下添加：
+
+```yaml
+environment:
+  FNS_ESA_REAL_IP: "true"
+  FNS_ESA_ORIGIN_SECRET: "替换成自己生成的密钥，与ESA完全一致"
+```
+
+免费版模式中将原先添加的 `FNS_TRUSTED_PROXIES` 和 YAML `trusted-proxies` 留空；如果同时配置了来源白名单，则必须同时满足密钥与来源校验。保存后重新创建容器。建议先保存 ESA 规则，再启用容器配置，避免切换期间读不到访客 IP。
+
+密钥只从服务端环境变量读取，要求 32～256 个可见 ASCII 字符；不会写回 YAML、JSON 配置导出、响应或传给 Nuxt。比较使用固定长度哈希及常量时间校验。没有密钥或密钥不正确的外部请求，仍按 TCP 连接 IP 处理，忽略伪造的 ESA／XFF 头；已有账号和分享权限照常校验。它用于验证 IP 头的来源，并不会自动封禁所有直连访问。
+
+密钥是静态回源凭证，ESA 到 NAS 应使用 HTTPS 回源；仅浏览器到 ESA 使用 HTTPS 并不能保护回源链路。若目前直接回源到明文 HTTP 的 9000 端口，密钥也会明文传输，需要在 NAS 提供 HTTPS 回源入口。不要在 URL 参数或响应头中配置该密钥。
+
 ### 阿里云 ESA 通过 IPv6 直接回源 NAS
 
 1. 在 ESA 站点的“规则 → 转换规则 → 托管转换”开启“添加真实客户端 IP 请求头”，使用默认名称 `ali-real-client-ip`。
@@ -129,7 +150,7 @@ server:
     - '2001:db8:100::/48'
 ```
 
-也可通过 Docker Compose 的环境变量覆盖 YAML：`FNS_ESA_REAL_IP=true`，`FNS_TRUSTED_PROXIES` 填写实际网段，多个用逗号或换行分隔。Compose 中留空则保留原 YAML 配置。ESA 模式默认关闭；启用时缺少可信列表、网段非法或配置 `::/0`、`0.0.0.0/0` 会拒绝启动。
+也可通过 Docker Compose 的环境变量覆盖 YAML：`FNS_ESA_REAL_IP=true`，`FNS_TRUSTED_PROXIES` 填写实际网段，多个用逗号或换行分隔。Compose 中留空则保留原 YAML 配置。ESA 模式默认关闭；未使用回源密钥时启用却缺少可信列表，或网段非法、配置 `::/0`、`0.0.0.0/0` 会拒绝启动。
 
 仅当请求实际 TCP 来源属于配置的可信网段时，才读取 ESA 注入的单个 IPv4/IPv6 地址。缺少或非法的 ESA 头退回记录回源节点 IP，忽略可能被伪造的 XFF；不信任列表外来源伪造的 ESA 头。后台、Nuxt、SSR 与登录令牌 IP 绑定使用同一解析结果，传给 Nuxt 前会删除原始代理头。
 

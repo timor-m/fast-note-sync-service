@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
 	"crypto/tls"
 	"net"
 	"strings"
@@ -10,18 +12,20 @@ import (
 
 // Proxy handles proxy headers and restores original request information based on trusted proxies
 // Proxy 根据可信代理处理代理头部并恢复原始请求信息
-func ConfigureProxy(r *gin.Engine, trustedProxies []string, esaRealIP bool) {
+func ConfigureProxy(r *gin.Engine, trustedProxies []string, esaRealIP bool, originSecret string) {
 	// Nuxt is a private loopback proxy; other trusted sources must be explicit.
 	proxies := append([]string{"127.0.0.1", "::1"}, trustedProxies...)
 	if err := r.SetTrustedProxies(proxies); err != nil {
 		panic(err)
 	}
-	r.Use(Proxy(trustedProxies, esaRealIP))
+	r.Use(Proxy(trustedProxies, esaRealIP, originSecret))
 }
 
-func Proxy(trustedProxies []string, esaRealIP ...bool) gin.HandlerFunc {
+func Proxy(trustedProxies []string, esaRealIP bool, originSecret string) gin.HandlerFunc {
 	// If trustedProxies is empty, default to loopback addresses only
 	// 如果 trustedProxies 为空，默认只信任本地回环地址
+	explicitProxies := len(trustedProxies) > 0
+	expectedSecret := sha256.Sum256([]byte(originSecret))
 	if len(trustedProxies) == 0 {
 		trustedProxies = []string{"127.0.0.1", "::1"}
 	}
@@ -58,6 +62,21 @@ func Proxy(trustedProxies []string, esaRealIP ...bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		remoteHost, _, _ := net.SplitHostPort(c.Request.RemoteAddr)
 		trusted := isTrusted(remoteHost)
+		local := remoteHost == "127.0.0.1" || remoteHost == "::1"
+		esaTrusted := esaRealIP && trusted
+		if originSecret != "" {
+			values := c.Request.Header.Values("X-FNS-Origin-Key")
+			supplied := ""
+			if len(values) == 1 {
+				supplied = values[0]
+			}
+			suppliedHash := sha256.Sum256([]byte(supplied))
+			esaTrusted = esaRealIP && len(values) == 1 && subtle.ConstantTimeCompare(suppliedHash[:], expectedSecret[:]) == 1 && (!explicitProxies || trusted)
+			// Internal Go/Nuxt traffic has no origin credential or ESA IP header.
+			trusted = esaTrusted || (local && len(values) == 0 && c.GetHeader("ali-real-client-ip") == "")
+		}
+		// Remove before downstream logging and proxying, including on invalid keys.
+		c.Request.Header.Del("X-FNS-Origin-Key")
 
 		proto := ""
 		if trusted {
@@ -92,7 +111,7 @@ func Proxy(trustedProxies []string, esaRealIP ...bool) gin.HandlerFunc {
 			}
 		}
 
-		if len(esaRealIP) > 0 && esaRealIP[0] && trusted {
+		if esaTrusted {
 			// ESA adds a single IP, never a forwarding chain. Do not fall back to an
 			// attacker-controlled XFF when ESA's header is absent or invalid.
 			values := c.Request.Header.Values("ali-real-client-ip")
@@ -101,6 +120,11 @@ func Proxy(trustedProxies []string, esaRealIP ...bool) gin.HandlerFunc {
 					c.Request.RemoteAddr = net.JoinHostPort(ip.String(), "0")
 				}
 			}
+			c.Request.Header.Del("X-Forwarded-For")
+			c.Request.Header.Del("X-Real-IP")
+			c.Request.Header.Del("CF-Connecting-IP")
+		} else if originSecret != "" && !trusted {
+			// A configured CIDR must not bypass a required origin credential.
 			c.Request.Header.Del("X-Forwarded-For")
 			c.Request.Header.Del("X-Real-IP")
 			c.Request.Header.Del("CF-Connecting-IP")

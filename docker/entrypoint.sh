@@ -47,7 +47,7 @@ frontend_loop() {
             sleep 2 & child_pid=$!; wait "$child_pid"; child_pid=""
             continue
         }
-        gosu node node web/.output/server/index.mjs &
+        gosu node env -u FNS_ESA_ORIGIN_SECRET node web/.output/server/index.mjs &
         child_pid=$!
         wait "$child_pid"
         status=$?

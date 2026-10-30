@@ -11,10 +11,19 @@ const exec = promisify(execFile)
 // Model a stable client behind the existing external reverse proxy. Docker
 // Host connections in this test environment can use different source IPs.
 const nativeFetch = globalThis.fetch
+const esaSecretMode = process.env.FNS_SMOKE_ESA_MODE === 'true'
+const originSecret = esaSecretMode ? randomBytes(32).toString('hex') : ''
 const fetch = (url, options = {}) =>
   nativeFetch(url, {
     ...options,
-    headers: { 'x-forwarded-for': '192.0.2.10', ...options.headers },
+    headers: {
+      'x-forwarded-for': '192.0.2.10',
+      ...options.headers,
+      ...(esaSecretMode ? {
+        'x-fns-origin-key': originSecret,
+        'ali-real-client-ip': options.headers?.['x-forwarded-for'] || '192.0.2.10',
+      } : {}),
+    },
   })
 const composeFile = resolve('../docker/docker-compose.yaml')
 const project = `fns-smoke-${Date.now()}`
@@ -33,7 +42,11 @@ const env = {
   FNS_SESSION_PASSWORD: '',
   FNS_SESSION_SECURE: 'false',
   FNS_WEB_FRONTEND_ENABLED: 'true',
-  FNS_WEB_FRONTEND_TIMEOUT: '2s',
+  // Production timeout: QEMU cold SSR can legitimately exceed two seconds.
+  FNS_WEB_FRONTEND_TIMEOUT: '30s',
+  FNS_ESA_REAL_IP: esaSecretMode ? 'true' : 'false',
+  FNS_ESA_ORIGIN_SECRET: originSecret,
+  FNS_TRUSTED_PROXIES: '',
 }
 const compose = (...args) =>
   exec('docker', ['compose', '-p', project, '-f', composeFile, ...args], {
@@ -101,7 +114,7 @@ try {
   await mkdir(join(dir, 'storage'))
   await writeFile(
     join(dir, 'config/config.yaml'),
-    `user:\n  register-is-enable: true\nserver:\n  http-port: ':9000'\n  trusted-proxies: ['0.0.0.0/0', '::/0']\nsecurity:\n  auth-token-key: '${randomBytes(24).toString('hex')}'\n  share-token-key: '${randomBytes(24).toString('hex')}'\nstorage:\n  local-fs:\n    is-enable: true\n`,
+    `user:\n  register-is-enable: true\nserver:\n  http-port: ':9000'\n  trusted-proxies: ${esaSecretMode ? '[]' : "['0.0.0.0/0', '::/0']"}\nsecurity:\n  auth-token-key: '${randomBytes(24).toString('hex')}'\n  share-token-key: '${randomBytes(24).toString('hex')}'\nstorage:\n  local-fs:\n    is-enable: true\n`,
   )
   await compose('up', '-d', '--no-build')
   const running = JSON.parse(
@@ -435,6 +448,17 @@ try {
     )
   ).stdout.trim()
   assert.match(nodePid, /^\d+$/)
+  if (esaSecretMode) {
+    await compose('exec', '-T', '--user', '1000', 'fast-note-sync-service',
+      'node', '-e', `
+        const fs = require('node:fs');
+        const environment = fs.readFileSync('/proc/${nodePid}/environ', 'utf8');
+        if (environment.split(String.fromCharCode(0)).some(item => item.startsWith('FNS_ESA_ORIGIN_SECRET=')))
+          process.exit(1);
+      `)
+    pass('ESA origin credential is absent from the Nuxt process environment')
+  }
+
   await compose(
     'exec',
     '-T',

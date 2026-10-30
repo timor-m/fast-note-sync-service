@@ -81,6 +81,7 @@ func frontendReverseProxy(cfg config.FrontendConfig) gin.HandlerFunc {
 		// Snapshot request metadata after Proxy middleware; never trust raw browser forwarding headers.
 		req := c.Request.Clone(c.Request.Context())
 		req.Header.Set("X-Forwarded-For", c.ClientIP())
+		req.Header.Del("X-FNS-Origin-Key")
 		req.Header.Del("Ali-Real-Client-IP")
 		req.Header.Del("X-Real-IP")
 		req.Header.Del("CF-Connecting-IP")
